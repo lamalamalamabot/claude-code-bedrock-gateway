@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# CDK
+cdk.out/
+cdk-deploy.out/
+.cdk.staging/
+
+# TypeScript compiled output (in source dirs)
+bin/**/*.js
+bin/**/*.d.ts
+lib/**/*.js
+lib/**/*.d.ts
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Environment
+.env
+.env.local
+
+# Backup files
+llm-gateway-guide.backup.md
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
