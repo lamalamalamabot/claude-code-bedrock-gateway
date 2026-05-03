@@ -133,6 +133,14 @@ export class GatewayStack extends cdk.NestedStack {
       assignPublicIp: false,
     });
 
+    const scaling = this.ecsService.autoScaleTaskCount({
+      minCapacity: 1,
+      maxCapacity: 10,
+    });
+    scaling.scaleOnCpuUtilization('CpuScaling', {
+      targetUtilizationPercent: 70,
+    });
+
     // --- ALB ---
     this.alb = new elbv2.ApplicationLoadBalancer(this, 'Alb', {
       loadBalancerName: `${PROJECT_NAME}-alb`,
