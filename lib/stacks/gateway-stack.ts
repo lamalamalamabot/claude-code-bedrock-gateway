@@ -177,6 +177,7 @@ export class GatewayStack extends cdk.NestedStack {
       sslPolicy: elbv2.SslPolicy.TLS13_RES,
       certificates: [certificate],
       defaultTargetGroups: [targetGroup],
+      open: false,
     });
 
     // HTTP -> HTTPS redirect
@@ -188,6 +189,7 @@ export class GatewayStack extends cdk.NestedStack {
         port: '443',
         permanent: true,
       }),
+      open: false,
     });
 
   }
