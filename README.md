@@ -184,7 +184,6 @@ LlmGatewayStack (Root)
 AWS 계정 사전 요구사항:
 - AWS Organization + IAM Identity Center 활성화
 - IAM Identity Center에서 사용자 및 **그룹** 생성 (그룹명이 LiteLLM 팀명으로 자동 매핑)
-- Amazon Bedrock Claude 모델 사용 승인 (Opus 4.6, Sonnet 4.6, Haiku 4.5)
 - ACM 인증서 (ALB HTTPS용) 또는 자체서명 인증서
 
 ## 배포

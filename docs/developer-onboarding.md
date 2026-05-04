@@ -69,7 +69,7 @@ claude --version
 sso_start_url = https://{IDC_ID}.awsapps.com/start
 sso_region = ap-northeast-2
 sso_account_id = {ACCOUNT_ID}
-sso_role_name = AdministratorAccess
+sso_role_name = ClaudeCodeUser
 region = ap-northeast-2
 output = json
 ```
