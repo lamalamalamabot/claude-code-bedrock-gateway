@@ -42,6 +42,30 @@ export class RootStack extends cdk.Stack {
     auth.tokenServiceFunction.addEnvironment('LITELLM_MASTER_KEY_ARN', gateway.litellmMasterKeySecret.secretArn);
     auth.tokenServiceFunction.addEnvironment('IDENTITY_STORE_ID', this.node.tryGetContext('identityStoreId') || '');
 
+    // Cross-account Identity Store 접근용 Role ARN (Payer 계정에 생성된 Role)
+    // 설정하지 않으면 로컬 계정의 Identity Store API를 직접 호출 (단일 계정 구성)
+    const identityStoreRoleArn = this.node.tryGetContext('identityStoreRoleArn') || '';
+    if (identityStoreRoleArn) {
+      auth.tokenServiceFunction.addEnvironment('IDENTITY_STORE_ROLE_ARN', identityStoreRoleArn);
+      // Cross-account: Payer 계정의 Role을 assume할 권한
+      auth.tokenServiceFunction.addToRolePolicy(new iam.PolicyStatement({
+        sid: 'AssumeIdentityStoreRole',
+        actions: ['sts:AssumeRole'],
+        resources: [identityStoreRoleArn],
+      }));
+    } else {
+      // 단일 계정: Identity Store API 직접 호출 권한
+      auth.tokenServiceFunction.addToRolePolicy(new iam.PolicyStatement({
+        sid: 'IdentityStoreReadAccess',
+        actions: [
+          'identitystore:ListUsers',
+          'identitystore:ListGroupMembershipsForMember',
+          'identitystore:DescribeGroup',
+        ],
+        resources: ['*'],
+      }));
+    }
+
     // Token Service Lambda: Secrets Manager 읽기 권한 (LiteLLM Master Key)
     gateway.litellmMasterKeySecret.grantRead(auth.tokenServiceFunction);
 
@@ -50,17 +74,6 @@ export class RootStack extends cdk.Stack {
       sid: 'ConfigTableReadWrite',
       actions: ['dynamodb:GetItem', 'dynamodb:PutItem'],
       resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${CONFIG_TABLE_NAME}`],
-    }));
-
-    // Token Service Lambda: IAM Identity Center 그룹 조회 권한 (팀 자동 매핑)
-    auth.tokenServiceFunction.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'IdentityStoreReadAccess',
-      actions: [
-        'identitystore:ListUsers',
-        'identitystore:ListGroupMembershipsForMember',
-        'identitystore:DescribeGroup',
-      ],
-      resources: ['*'],
     }));
 
     new MonitoringStack(this, 'Monitoring', {

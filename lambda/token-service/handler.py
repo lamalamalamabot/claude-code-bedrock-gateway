@@ -29,13 +29,41 @@ logger.setLevel(logging.INFO)
 _region = os.environ.get("AWS_REGION", "ap-northeast-2")
 _dynamodb = boto3.resource("dynamodb", region_name=_region)
 _secrets_client = boto3.client("secretsmanager", region_name=_region)
-_identitystore_client = boto3.client("identitystore", region_name=_region)
+_sts_client = boto3.client("sts", region_name=_region)
 
 _master_key_cache: str | None = None
 _team_cache: dict[str, str] = {}
+_identitystore_client_cache = None
 
 IDENTITY_STORE_ID = os.environ.get("IDENTITY_STORE_ID", "")
+IDENTITY_STORE_ROLE_ARN = os.environ.get("IDENTITY_STORE_ROLE_ARN", "")
 DEFAULT_TEAM = "default"
+
+
+def _get_identitystore_client():
+    """Identity Store 클라이언트를 반환한다. Cross-account 시 assume role을 수행한다."""
+    global _identitystore_client_cache
+    if _identitystore_client_cache is not None:
+        return _identitystore_client_cache
+
+    if IDENTITY_STORE_ROLE_ARN:
+        response = _sts_client.assume_role(
+            RoleArn=IDENTITY_STORE_ROLE_ARN,
+            RoleSessionName="token-service-identity-store",
+            DurationSeconds=900,
+        )
+        creds = response["Credentials"]
+        _identitystore_client_cache = boto3.client(
+            "identitystore",
+            region_name=_region,
+            aws_access_key_id=creds["AccessKeyId"],
+            aws_secret_access_key=creds["SecretAccessKey"],
+            aws_session_token=creds["SessionToken"],
+        )
+    else:
+        _identitystore_client_cache = boto3.client("identitystore", region_name=_region)
+
+    return _identitystore_client_cache
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -149,7 +177,8 @@ def _get_user_team(username: str) -> str:
 
 def _find_identity_store_user(username: str) -> str | None:
     """Identity Store에서 username으로 사용자 ID를 찾는다."""
-    response = _identitystore_client.list_users(
+    client = _get_identitystore_client()
+    response = client.list_users(
         IdentityStoreId=IDENTITY_STORE_ID,
         Filters=[{
             "AttributePath": "UserName",
@@ -164,7 +193,8 @@ def _find_identity_store_user(username: str) -> str | None:
 
 def _get_user_groups(user_id: str) -> list[str]:
     """Identity Store에서 사용자가 속한 그룹 이름 목록을 반환한다."""
-    response = _identitystore_client.list_group_memberships_for_member(
+    client = _get_identitystore_client()
+    response = client.list_group_memberships_for_member(
         IdentityStoreId=IDENTITY_STORE_ID,
         MemberId={"UserId": user_id},
     )
@@ -173,7 +203,7 @@ def _get_user_groups(user_id: str) -> list[str]:
     group_names = []
     for membership in memberships:
         group_id = membership["GroupId"]
-        group_response = _identitystore_client.describe_group(
+        group_response = client.describe_group(
             IdentityStoreId=IDENTITY_STORE_ID,
             GroupId=group_id,
         )
