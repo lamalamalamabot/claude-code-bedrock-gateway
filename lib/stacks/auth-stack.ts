@@ -1,17 +1,23 @@
 import * as cdk from 'aws-cdk-lib';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import { Construct } from 'constructs';
 import { PROJECT_NAME } from '../config/constants';
 
+export interface AuthStackProps {
+  vpc: ec2.IVpc;
+  lambdaSg: ec2.ISecurityGroup;
+}
+
 export class AuthStack extends cdk.NestedStack {
   public readonly api: apigateway.RestApi;
   public readonly tokenServiceFunction: lambda.Function;
 
-  constructor(scope: Construct, id: string) {
+  constructor(scope: Construct, id: string, props: AuthStackProps) {
     super(scope, id);
 
-    // Token Service Lambda (VPC 외부 - 인터넷 경유로 Public ALB 접근)
+    // Token Service Lambda
     this.tokenServiceFunction = new lambda.Function(this, 'TokenServiceFn', {
       functionName: `${PROJECT_NAME}-token-service`,
       runtime: lambda.Runtime.PYTHON_3_12,
@@ -19,6 +25,9 @@ export class AuthStack extends cdk.NestedStack {
       code: lambda.Code.fromAsset('lambda/token-service'),
       memorySize: 256,
       timeout: cdk.Duration.seconds(10),
+      vpc: props.vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+      securityGroups: [props.lambdaSg],
       environment: {},
     });
 
