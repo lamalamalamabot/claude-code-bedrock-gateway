@@ -23,10 +23,7 @@ export class RootStack extends cdk.Stack {
       rdsSg: network.rdsSg,
     });
 
-    const auth = new AuthStack(this, 'Auth', {
-      vpc: network.vpc,
-      lambdaSg: network.lambdaSg,
-    });
+    const auth = new AuthStack(this, 'Auth');
 
     const gateway = new GatewayStack(this, 'Gateway', {
       vpc: network.vpc,

@@ -8,7 +8,6 @@ export class NetworkStack extends cdk.NestedStack {
   public readonly albSg: ec2.SecurityGroup;
   public readonly ecsSg: ec2.SecurityGroup;
   public readonly rdsSg: ec2.SecurityGroup;
-  public readonly lambdaSg: ec2.SecurityGroup;
   public readonly vpcEndpointSg: ec2.SecurityGroup;
 
   constructor(scope: Construct, id: string) {
@@ -71,15 +70,7 @@ export class NetworkStack extends cdk.NestedStack {
       'Allow LiteLLM traffic from ALB',
     );
 
-    // Lambda: outbound only
-    this.lambdaSg = new ec2.SecurityGroup(this, 'LambdaSg', {
-      vpc: this.vpc,
-      securityGroupName: `${PROJECT_NAME}-lambda-sg`,
-      description: 'Lambda security group - outbound only',
-      allowAllOutbound: true,
-    });
-
-    // RDS: inbound 5432 from ECS and Lambda
+    // RDS: inbound 5432 from ECS
     this.rdsSg = new ec2.SecurityGroup(this, 'RdsSg', {
       vpc: this.vpc,
       securityGroupName: `${PROJECT_NAME}-rds-sg`,
@@ -90,11 +81,6 @@ export class NetworkStack extends cdk.NestedStack {
       this.ecsSg,
       ec2.Port.tcp(5432),
       'Allow PostgreSQL from ECS',
-    );
-    this.rdsSg.addIngressRule(
-      this.lambdaSg,
-      ec2.Port.tcp(5432),
-      'Allow PostgreSQL from Lambda',
     );
 
     // VPC Endpoint SG: inbound 443 from ECS
