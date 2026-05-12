@@ -10,11 +10,8 @@ import type * as rds from 'aws-cdk-lib/aws-rds';
 import { Construct } from 'constructs';
 import { PROJECT_NAME } from '../config/constants';
 
-// LiteLLM config.yaml content passed inline via environment variable.
-// Custom callbacks removed — requires custom Docker image (restore when Docker is available).
-// LiteLLM runs in basic proxy mode without config.yaml.
-// Bedrock pass-through (/bedrock/*) works without explicit model_list.
-// Config-based setup will be restored when custom Docker image is available.
+// LiteLLM config.yaml is generated at container startup and passed via --config.
+// Enables prompt storage in spend logs and model persistence in DB.
 
 export interface GatewayStackProps {
   vpc: ec2.IVpc;
@@ -73,9 +70,17 @@ export class GatewayStack extends cdk.NestedStack {
       ],
       resources: [
         `arn:aws:bedrock:*:${this.account}:inference-profile/global.anthropic.claude-*`,
-        `arn:aws:bedrock:*:${this.account}:inference-profile/global.anthropic.claude-*`,
         'arn:aws:bedrock:*::foundation-model/anthropic.claude-*',
       ],
+    }));
+
+    this.taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      sid: 'MarketplaceModelAccess',
+      actions: [
+        'aws-marketplace:ViewSubscriptions',
+        'aws-marketplace:Subscribe',
+      ],
+      resources: ['*'],
     }));
 
     this.taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
@@ -88,9 +93,6 @@ export class GatewayStack extends cdk.NestedStack {
     }));
 
     // --- Container ---
-    // Uses official LiteLLM image from GHCR (no Docker build required).
-    // Config is written inline at startup via LITELLM_CONFIG_YAML env var.
-    // Custom callbacks require a custom image — will be restored when Docker is available.
     this.taskDefinition.addContainer('litellm', {
       image: ecs.ContainerImage.fromRegistry('ghcr.io/berriai/litellm:main-latest'),
       portMappings: [{ containerPort: 4000, protocol: ecs.Protocol.TCP }],
@@ -110,7 +112,11 @@ export class GatewayStack extends cdk.NestedStack {
       },
       entryPoint: ['sh', '-c'],
       command: [
-        'export DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}" && exec litellm --port 4000 --drop_params',
+        [
+          'export DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"',
+          'printf "general_settings:\\n  store_model_in_db: true\\n  store_prompts_in_spend_logs: true\\nlitellm_settings:\\n  drop_params: true\\n" > /tmp/config.yaml',
+          'exec litellm --port 4000 --config /tmp/config.yaml',
+        ].join(' && '),
       ],
       healthCheck: {
         command: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(\'http://localhost:4000/health/liveliness\')" || exit 1'],
