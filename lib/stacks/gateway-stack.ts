@@ -112,24 +112,7 @@ export class GatewayStack extends cdk.NestedStack {
       },
       entryPoint: ['sh', '-c'],
       command: [
-        [
-          'export DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"',
-          `python3 -c "
-import yaml
-cfg = {
-    'general_settings': {
-        'store_model_in_db': True,
-        'store_prompts_in_spend_logs': True,
-    },
-    'litellm_settings': {
-        'drop_params': True,
-    },
-}
-with open('/tmp/config.yaml', 'w') as f:
-    yaml.dump(cfg, f)
-"`,
-          'exec litellm --port 4000 --config /tmp/config.yaml',
-        ].join(' && '),
+        'export DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}" && exec litellm --port 4000 --drop_params',
       ],
       healthCheck: {
         command: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(\'http://localhost:4000/health/liveliness\')" || exit 1'],
