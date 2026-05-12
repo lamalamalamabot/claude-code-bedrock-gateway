@@ -120,14 +120,10 @@ cfg = {
     'general_settings': {
         'store_model_in_db': True,
         'store_prompts_in_spend_logs': True,
+        'pass_through_all_models': True,
     },
     'litellm_settings': {
         'drop_params': True,
-    },
-    'router_settings': {
-        'router_general_settings': {
-            'pass_through_all_models': True,
-        },
     },
 }
 with open('/tmp/config.yaml', 'w') as f:
