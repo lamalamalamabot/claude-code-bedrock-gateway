@@ -114,7 +114,7 @@ export class GatewayStack extends cdk.NestedStack {
       command: [
         [
           'export DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"',
-          'printf "general_settings:\\n  store_model_in_db: true\\n  store_prompts_in_spend_logs: true\\nlitellm_settings:\\n  drop_params: true\\n" > /tmp/config.yaml',
+          'printf "general_settings:\\n  store_model_in_db: true\\n  store_prompts_in_spend_logs: true\\nlitellm_settings:\\n  drop_params: true\\n  enable_litellm_model_name_matching: false\\n" > /tmp/config.yaml',
           'exec litellm --port 4000 --config /tmp/config.yaml',
         ].join(' && '),
       ],
