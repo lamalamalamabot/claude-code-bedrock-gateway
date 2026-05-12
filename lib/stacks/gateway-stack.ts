@@ -109,7 +109,6 @@ export class GatewayStack extends cdk.NestedStack {
       },
       environment: {
         DB_NAME: 'litellm',
-        STORE_MODEL_IN_DB: 'True',
         STORE_PROMPTS_IN_SPEND_LOGS: 'True',
       },
       entryPoint: ['sh', '-c'],
