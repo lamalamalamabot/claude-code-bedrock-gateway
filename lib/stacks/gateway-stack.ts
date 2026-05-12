@@ -117,14 +117,6 @@ export class GatewayStack extends cdk.NestedStack {
           `python3 -c "
 import yaml
 cfg = {
-    'model_list': [
-        {
-            'model_name': '*',
-            'litellm_params': {
-                'model': 'bedrock/*',
-            },
-        },
-    ],
     'general_settings': {
         'store_model_in_db': True,
         'store_prompts_in_spend_logs': True,
