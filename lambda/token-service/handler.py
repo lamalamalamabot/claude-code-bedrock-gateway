@@ -90,7 +90,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         master_key = _get_master_key()
 
+        _ensure_user_exists(master_key, username)
         _ensure_team_exists(master_key, team_id)
+        _ensure_team_member(master_key, team_id, username)
 
         try:
             virtual_key = _create_virtual_key(master_key, username, account, user_arn, team_id)
@@ -210,6 +212,42 @@ def _get_user_groups(user_id: str) -> list[str]:
         group_names.append(group_response["DisplayName"])
 
     return group_names
+
+
+def _ensure_user_exists(master_key: str, username: str) -> None:
+    """LiteLLM에 사용자가 존재하는지 확인하고, 없으면 생성한다."""
+    endpoint = os.environ["LITELLM_ENDPOINT"]
+    url = f"{endpoint}/user/new"
+    body = {
+        "user_id": username,
+        "user_role": "internal_user",
+    }
+    try:
+        _litellm_request("POST", url, master_key, body=body)
+        logger.info("LiteLLM 사용자 생성: user=%s", username)
+    except urllib.error.HTTPError as e:
+        if e.code == 400:
+            pass
+        else:
+            logger.warning("LiteLLM 사용자 생성 실패: user=%s", username, exc_info=True)
+
+
+def _ensure_team_member(master_key: str, team_id: str, username: str) -> None:
+    """사용자를 팀에 멤버로 추가한다. 이미 멤버이면 skip."""
+    endpoint = os.environ["LITELLM_ENDPOINT"]
+    url = f"{endpoint}/team/member_add"
+    body = {
+        "team_id": team_id,
+        "member": {"role": "user", "user_id": username},
+    }
+    try:
+        _litellm_request("POST", url, master_key, body=body)
+        logger.info("팀 멤버 추가: user=%s, team=%s", username, team_id)
+    except urllib.error.HTTPError as e:
+        if e.code == 400:
+            pass
+        else:
+            logger.warning("팀 멤버 추가 실패: user=%s, team=%s", username, team_id, exc_info=True)
 
 
 def _ensure_team_exists(master_key: str, team_id: str) -> None:
