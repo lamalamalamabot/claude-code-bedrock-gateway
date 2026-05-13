@@ -90,6 +90,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         master_key = _get_master_key()
 
+        _ensure_user_exists(master_key, username)
         _ensure_team_exists(master_key, team_id)
 
         try:
@@ -210,6 +211,24 @@ def _get_user_groups(user_id: str) -> list[str]:
         group_names.append(group_response["DisplayName"])
 
     return group_names
+
+
+def _ensure_user_exists(master_key: str, username: str) -> None:
+    """LiteLLM에 사용자가 존재하는지 확인하고, 없으면 생성한다."""
+    endpoint = os.environ["LITELLM_ENDPOINT"]
+    url = f"{endpoint}/user/new"
+    body = {
+        "user_id": username,
+        "user_role": "internal_user",
+    }
+    try:
+        _litellm_request("POST", url, master_key, body=body)
+        logger.info("LiteLLM 사용자 생성: user=%s", username)
+    except urllib.error.HTTPError as e:
+        if e.code == 400:
+            pass
+        else:
+            logger.warning("LiteLLM 사용자 생성 실패: user=%s", username, exc_info=True)
 
 
 def _ensure_team_exists(master_key: str, team_id: str) -> None:
