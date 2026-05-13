@@ -132,6 +132,10 @@ cfg = {
             'litellm_params': {'model': 'bedrock/global.anthropic.claude-sonnet-4-6'},
         },
         {
+            'model_name': 'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
+            'litellm_params': {'model': 'bedrock/global.anthropic.claude-sonnet-4-5-20250929-v1:0'},
+        },
+        {
             'model_name': 'global.anthropic.claude-haiku-4-5-20251001-v1:0',
             'litellm_params': {'model': 'bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0'},
         },
