@@ -120,6 +120,10 @@ import yaml
 cfg = {
     'model_list': [
         {
+            'model_name': 'global.anthropic.claude-opus-4-7',
+            'litellm_params': {'model': 'bedrock/global.anthropic.claude-opus-4-7'},
+        },
+        {
             'model_name': 'global.anthropic.claude-opus-4-6-v1',
             'litellm_params': {'model': 'bedrock/global.anthropic.claude-opus-4-6-v1'},
         },
