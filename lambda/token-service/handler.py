@@ -151,21 +151,27 @@ def _parse_sso_arn(arn: str) -> tuple[str, str, str] | None:
 
 def _get_user_team(username: str) -> str:
     """IAM Identity Center에서 사용자의 그룹을 조회하여 팀을 결정한다."""
+    if username in _team_cache:
+        return _team_cache[username]
+
     try:
         user_id = _find_identity_store_user(username)
         if not user_id:
             logger.info("Identity Store에서 사용자를 찾지 못함: user=%s", username)
+            _team_cache[username] = DEFAULT_TEAM
             return DEFAULT_TEAM
 
         groups = _get_user_groups(user_id)
         if groups:
             team_id = groups[0]
             logger.info("Identity Store 그룹 조회 성공: user=%s, groups=%s, team=%s", username, groups, team_id)
+            _team_cache[username] = team_id
             return team_id
 
     except Exception:
         logger.warning("Identity Store 조회 실패, default 팀 사용: user=%s", username, exc_info=True)
 
+    _team_cache[username] = DEFAULT_TEAM
     return DEFAULT_TEAM
 
 
