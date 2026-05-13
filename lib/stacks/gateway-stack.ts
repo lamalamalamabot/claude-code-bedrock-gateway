@@ -113,7 +113,37 @@ export class GatewayStack extends cdk.NestedStack {
       },
       entryPoint: ['sh', '-c'],
       command: [
-        'export DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}" && printf "model_list: []\\n" > /tmp/config.yaml && exec litellm --port 4000 --drop_params --config /tmp/config.yaml',
+        [
+          'export DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"',
+          `python3 -c "
+import yaml
+cfg = {
+    'model_list': [
+        {
+            'model_name': 'global.anthropic.claude-opus-4-6-v1',
+            'litellm_params': {'model': 'bedrock/global.anthropic.claude-opus-4-6-v1'},
+        },
+        {
+            'model_name': 'global.anthropic.claude-sonnet-4-6',
+            'litellm_params': {'model': 'bedrock/global.anthropic.claude-sonnet-4-6'},
+        },
+        {
+            'model_name': 'global.anthropic.claude-haiku-4-5-20251001-v1:0',
+            'litellm_params': {'model': 'bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0'},
+        },
+    ],
+    'general_settings': {
+        'store_prompts_in_spend_logs': True,
+    },
+    'litellm_settings': {
+        'drop_params': True,
+    },
+}
+with open('/tmp/config.yaml', 'w') as f:
+    yaml.dump(cfg, f)
+"`,
+          'exec litellm --port 4000 --config /tmp/config.yaml',
+        ].join(' && '),
       ],
       healthCheck: {
         command: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(\'http://localhost:4000/health/liveliness\')" || exit 1'],
