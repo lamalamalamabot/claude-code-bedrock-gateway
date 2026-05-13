@@ -80,8 +80,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         username, role_name, account = parsed
         logger.info("SSO 인증 확인: user=%s, role=%s, account=%s", username, role_name, account)
 
-        team_id, email, display_name = _get_user_info_and_team(username)
-        logger.info("팀 매핑: user=%s, team=%s, email=%s", username, team_id, email)
+        team_id = _get_user_team(username)
+        logger.info("팀 매핑: user=%s, team=%s", username, team_id)
 
         cached_key = _get_cached_key(username)
         if cached_key:
@@ -90,9 +90,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         master_key = _get_master_key()
 
-        _ensure_user_exists(master_key, username, email, display_name)
         _ensure_team_exists(master_key, team_id)
-        _ensure_team_member(master_key, team_id, username)
 
         try:
             virtual_key = _create_virtual_key(master_key, username, account, user_arn, team_id)
@@ -151,34 +149,28 @@ def _parse_sso_arn(arn: str) -> tuple[str, str, str] | None:
 # 팀 매핑 (IAM Identity Center 자동 조회)
 # ---------------------------------------------------------------------------
 
-def _get_user_info_and_team(username: str) -> tuple[str, str | None, str | None]:
-    """IAM Identity Center에서 사용자 정보와 그룹을 조회하여 (team_id, email, display_name)을 반환한다."""
-    email = None
-    display_name = None
-
+def _get_user_team(username: str) -> str:
+    """IAM Identity Center에서 사용자의 그룹을 조회하여 팀을 결정한다."""
     try:
-        idc_user = _find_identity_store_user(username)
-        if not idc_user:
+        user_id = _find_identity_store_user(username)
+        if not user_id:
             logger.info("Identity Store에서 사용자를 찾지 못함: user=%s", username)
-            return DEFAULT_TEAM, None, None
+            return DEFAULT_TEAM
 
-        email = idc_user.get("email")
-        display_name = idc_user.get("display_name")
-
-        groups = _get_user_groups(idc_user["user_id"])
+        groups = _get_user_groups(user_id)
         if groups:
             team_id = groups[0]
             logger.info("Identity Store 그룹 조회 성공: user=%s, groups=%s, team=%s", username, groups, team_id)
-            return team_id, email, display_name
+            return team_id
 
     except Exception:
         logger.warning("Identity Store 조회 실패, default 팀 사용: user=%s", username, exc_info=True)
 
-    return DEFAULT_TEAM, email, display_name
+    return DEFAULT_TEAM
 
 
-def _find_identity_store_user(username: str) -> dict | None:
-    """Identity Store에서 username으로 사용자 정보를 찾는다."""
+def _find_identity_store_user(username: str) -> str | None:
+    """Identity Store에서 username으로 사용자 ID를 찾는다."""
     client = _get_identitystore_client()
     response = client.list_users(
         IdentityStoreId=IDENTITY_STORE_ID,
@@ -189,15 +181,7 @@ def _find_identity_store_user(username: str) -> dict | None:
     )
     users = response.get("Users", [])
     if users:
-        user = users[0]
-        emails = user.get("Emails", [])
-        email = emails[0]["Value"] if emails else None
-        display_name = user.get("DisplayName", "")
-        return {
-            "user_id": user["UserId"],
-            "email": email,
-            "display_name": display_name,
-        }
+        return users[0]["UserId"]
     return None
 
 
@@ -220,46 +204,6 @@ def _get_user_groups(user_id: str) -> list[str]:
         group_names.append(group_response["DisplayName"])
 
     return group_names
-
-
-def _ensure_user_exists(master_key: str, username: str, email: str | None = None, display_name: str | None = None) -> None:
-    """LiteLLM에 사용자가 존재하는지 확인하고, 없으면 생성한다."""
-    endpoint = os.environ["LITELLM_ENDPOINT"]
-    url = f"{endpoint}/user/new"
-    body: dict[str, Any] = {
-        "user_id": username,
-        "user_role": "internal_user",
-    }
-    if email:
-        body["user_email"] = email
-    if display_name:
-        body["user_alias"] = display_name
-    try:
-        _litellm_request("POST", url, master_key, body=body)
-        logger.info("LiteLLM 사용자 생성: user=%s", username)
-    except urllib.error.HTTPError as e:
-        if e.code == 400:
-            pass
-        else:
-            logger.warning("LiteLLM 사용자 생성 실패: user=%s", username, exc_info=True)
-
-
-def _ensure_team_member(master_key: str, team_id: str, username: str) -> None:
-    """사용자를 팀에 멤버로 추가한다. 이미 멤버이면 skip."""
-    endpoint = os.environ["LITELLM_ENDPOINT"]
-    url = f"{endpoint}/team/member_add"
-    body = {
-        "team_id": team_id,
-        "member": {"role": "user", "user_id": username},
-    }
-    try:
-        _litellm_request("POST", url, master_key, body=body)
-        logger.info("팀 멤버 추가: user=%s, team=%s", username, team_id)
-    except urllib.error.HTTPError as e:
-        if e.code == 400:
-            pass
-        else:
-            logger.warning("팀 멤버 추가 실패: user=%s, team=%s", username, team_id, exc_info=True)
 
 
 def _ensure_team_exists(master_key: str, team_id: str) -> None:
