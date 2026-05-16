@@ -18,7 +18,7 @@ export class NetworkStack extends cdk.NestedStack {
     this.vpc = new ec2.Vpc(this, 'Vpc', {
       vpcName: `${PROJECT_NAME}-vpc`,
       maxAzs: 2,
-      natGateways: 1,
+      natGateways: 2,
       subnetConfiguration: [
         {
           cidrMask: 24,

@@ -63,8 +63,8 @@ export class GatewayStack extends cdk.NestedStack {
 
     // --- Task Definition ---
     this.taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 2048,
-      memoryLimitMiB: 4096,
+      cpu: 4096,
+      memoryLimitMiB: 8192,
     });
 
     // Task Role: Bedrock, CloudWatch, Logs
@@ -154,6 +154,7 @@ cfg = {
     },
     'litellm_settings': {
         'drop_params': True,
+        'request_timeout': 600,
     },
 }
 with open('/tmp/config.yaml', 'w') as f:
@@ -176,7 +177,7 @@ with open('/tmp/config.yaml', 'w') as f:
       serviceName: `${PROJECT_NAME}-litellm`,
       cluster,
       taskDefinition: this.taskDefinition,
-      desiredCount: 1,
+      desiredCount: 3,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [props.ecsSg],
       circuitBreaker: { enable: true, rollback: true },
@@ -184,8 +185,8 @@ with open('/tmp/config.yaml', 'w') as f:
     });
 
     const scaling = this.ecsService.autoScaleTaskCount({
-      minCapacity: 1,
-      maxCapacity: 10,
+      minCapacity: 3,
+      maxCapacity: 20,
     });
     scaling.scaleOnCpuUtilization('CpuScaling', {
       targetUtilizationPercent: 70,
@@ -198,7 +199,7 @@ with open('/tmp/config.yaml', 'w') as f:
       internetFacing: true,
       securityGroup: props.albSg,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
-      idleTimeout: cdk.Duration.seconds(300),
+      idleTimeout: cdk.Duration.seconds(900),
     });
 
     const targetGroup = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {

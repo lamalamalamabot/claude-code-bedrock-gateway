@@ -267,14 +267,29 @@ NestedStack 구조이므로 루트 스택 하나만 배포하면 모든 하위 �
        "ANTHROPIC_BEDROCK_BASE_URL": "https://{ALB_DNS}/bedrock",
        "CLAUDE_CODE_SKIP_BEDROCK_AUTH": "1",
        "AWS_REGION": "ap-northeast-2",
-       "AWS_PROFILE": "claude-code",
-       "ANTHROPIC_DEFAULT_OPUS_MODEL": "global.anthropic.claude-opus-4-7",
-       "ANTHROPIC_DEFAULT_SONNET_MODEL": "global.anthropic.claude-sonnet-4-6",
-       "ANTHROPIC_DEFAULT_HAIKU_MODEL": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
        "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
-       "NODE_EXTRA_CA_CERTS": "/path/to/server.crt"
+       "NODE_EXTRA_CA_CERTS": "/path/to/server.crt",
+
+       "ANTHROPIC_DEFAULT_OPUS_MODEL": "global.anthropic.claude-opus-4-7[1m]",
+       "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "Opus 4.7 (1M)",
+       "ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION": "Opus 4.7 · 1M context, most capable",
+       "ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES": "effort,xhigh_effort,max_effort,thinking,adaptive_thinking,interleaved_thinking",
+
+       "ANTHROPIC_DEFAULT_SONNET_MODEL": "global.anthropic.claude-sonnet-4-6[1m]",
+       "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "Sonnet 4.6 (1M)",
+       "ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION": "Sonnet 4.6 · 1M context for large codebases",
+       "ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES": "effort,max_effort,thinking,adaptive_thinking,interleaved_thinking",
+
+       "ANTHROPIC_DEFAULT_HAIKU_MODEL": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+       "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": "Haiku 4.5",
+       "ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION": "Haiku 4.5 · Fastest for quick answers",
+
+       "ANTHROPIC_CUSTOM_MODEL_OPTION": "global.anthropic.claude-opus-4-6-v1[1m]",
+       "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME": "Opus 4.6 (1M)",
+       "ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION": "Opus 4.6 · 1M context"
      },
-     "apiKeyHelper": "/path/to/get-gateway-token.sh"
+     "apiKeyHelper": "/path/to/get-gateway-token.sh",
+     "model": "global.anthropic.claude-opus-4-7[1m]"
    }
    ```
 
@@ -293,10 +308,11 @@ NestedStack 구조이므로 루트 스택 하나만 배포하면 모든 하위 �
 | `ANTHROPIC_BEDROCK_BASE_URL` | `https://{ALB_DNS}/bedrock` | Gateway Bedrock pass-through URL |
 | `CLAUDE_CODE_SKIP_BEDROCK_AUTH` | `1` | SigV4 인증 생략 (Gateway가 처리) |
 | `AWS_REGION` | `ap-northeast-2` | AWS 리전 |
-| `AWS_PROFILE` | `claude-code` | SSO 프로필 (apiKeyHelper가 참조) |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `global.anthropic.claude-opus-4-7` | Opus 모델 (LiteLLM이 Application Inference Profile로 라우팅) |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `global.anthropic.claude-sonnet-4-6` | Sonnet 모델 (LiteLLM이 Application Inference Profile로 라우팅) |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | Haiku 모델 (LiteLLM이 Application Inference Profile로 라우팅) |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `global.anthropic.claude-opus-4-7[1m]` | Opus 4.7 1M context (`[1m]` suffix로 1M 활성화) |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `global.anthropic.claude-sonnet-4-6[1m]` | Sonnet 4.6 1M context (`[1m]` suffix로 1M 활성화) |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | Haiku 4.5 (LiteLLM이 Application Inference Profile로 라우팅) |
+| `ANTHROPIC_CUSTOM_MODEL_OPTION` | `global.anthropic.claude-opus-4-6-v1[1m]` | Opus 4.6 1M context (피커에 추가 모델로 표시) |
+| `*_NAME` / `*_DESCRIPTION` | 각 모델별 | `/model` 피커에 friendly name 표시 |
 | `NODE_EXTRA_CA_CERTS` | `/path/to/server.crt` | 자체서명 인증서 경로 |
 
 ## 관련 문서

@@ -19,11 +19,17 @@ export class DatabaseStack extends cdk.NestedStack {
       engine: rds.DatabaseClusterEngine.auroraPostgres({
         version: rds.AuroraPostgresEngineVersion.VER_15_15,
       }),
-      serverlessV2MinCapacity: 0.5,
-      serverlessV2MaxCapacity: 4,
+      serverlessV2MinCapacity: 2,
+      serverlessV2MaxCapacity: 16,
       writer: rds.ClusterInstance.serverlessV2('Writer', {
         publiclyAccessible: false,
       }),
+      readers: [
+        rds.ClusterInstance.serverlessV2('Reader', {
+          publiclyAccessible: false,
+          scaleWithWriter: true,
+        }),
+      ],
       vpc: props.vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       securityGroups: [props.rdsSg],
