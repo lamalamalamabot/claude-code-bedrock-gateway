@@ -5,6 +5,7 @@ import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import type * as rds from 'aws-cdk-lib/aws-rds';
 import { Construct } from 'constructs';
@@ -61,6 +62,24 @@ export class GatewayStack extends cdk.NestedStack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // --- S3: LLM Logs ---
+    const logBucket = new s3.Bucket(this, 'LlmLogBucket', {
+      bucketName: `${PROJECT_NAME}-llm-logs-${cdk.Aws.ACCOUNT_ID}`,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      lifecycleRules: [
+        {
+          id: 'TransitionToIA',
+          transitions: [
+            { storageClass: s3.StorageClass.INFREQUENT_ACCESS, transitionAfter: cdk.Duration.days(30) },
+            { storageClass: s3.StorageClass.GLACIER, transitionAfter: cdk.Duration.days(90) },
+          ],
+          expiration: cdk.Duration.days(365),
+        },
+      ],
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
     // --- Task Definition ---
     this.taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu: 4096,
@@ -101,6 +120,8 @@ export class GatewayStack extends cdk.NestedStack {
       },
     }));
 
+    logBucket.grantWrite(this.taskDefinition.taskRole);
+
     // --- Container ---
     this.taskDefinition.addContainer('litellm', {
       image: ecs.ContainerImage.fromRegistry('ghcr.io/berriai/litellm:main-latest'),
@@ -123,6 +144,8 @@ export class GatewayStack extends cdk.NestedStack {
         INFERENCE_PROFILE_ARN_OPUS_4_6: props.inferenceProfileArns.opus46,
         INFERENCE_PROFILE_ARN_SONNET_4_6: props.inferenceProfileArns.sonnet46,
         INFERENCE_PROFILE_ARN_HAIKU_4_5: props.inferenceProfileArns.haiku45,
+        S3_LOG_BUCKET_NAME: logBucket.bucketName,
+        AWS_REGION: cdk.Aws.REGION,
       },
       entryPoint: ['sh', '-c'],
       command: [
@@ -155,6 +178,13 @@ cfg = {
     'litellm_settings': {
         'drop_params': True,
         'request_timeout': 600,
+        'callbacks': ['s3_v2'],
+        's3_callback_params': {
+            's3_bucket_name': os.environ['S3_LOG_BUCKET_NAME'],
+            's3_region_name': os.environ.get('AWS_REGION', 'ap-northeast-2'),
+            's3_path': 'litellm-logs',
+            's3_use_team_prefix': True,
+        },
     },
 }
 with open('/tmp/config.yaml', 'w') as f:
