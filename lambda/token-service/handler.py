@@ -221,6 +221,7 @@ def _ensure_user_exists(master_key: str, username: str) -> None:
     body = {
         "user_id": username,
         "user_role": "internal_user",
+        "auto_create_key": False,
     }
     try:
         _litellm_request("POST", url, master_key, body=body)
