@@ -5,6 +5,7 @@ import { NetworkStack } from './network-stack';
 import { DatabaseStack } from './database-stack';
 import { AuthStack } from './auth-stack';
 import { GatewayStack } from './gateway-stack';
+import { InferenceProfileStack } from './inference-profile-stack';
 import { MonitoringStack } from './monitoring-stack';
 
 // Hardcoded table name to break circular dependency between Gateway and Monitoring NestedStacks.
@@ -23,6 +24,8 @@ export class RootStack extends cdk.Stack {
       rdsSg: network.rdsSg,
     });
 
+    const inferenceProfile = new InferenceProfileStack(this, 'InferenceProfile');
+
     const auth = new AuthStack(this, 'Auth', {
       vpc: network.vpc,
       lambdaSg: network.lambdaSg,
@@ -34,6 +37,12 @@ export class RootStack extends cdk.Stack {
       ecsSg: network.ecsSg,
       dbCluster: database.cluster,
       certificateArn: this.node.tryGetContext('certificateArn') || process.env.CERTIFICATE_ARN || '',
+      inferenceProfileArns: {
+        opus47: inferenceProfile.opus47Arn,
+        opus46: inferenceProfile.opus46Arn,
+        sonnet46: inferenceProfile.sonnet46Arn,
+        haiku45: inferenceProfile.haiku45Arn,
+      },
     });
 
     // Token Service Lambda: LiteLLM 연동 환경변수
@@ -80,6 +89,20 @@ export class RootStack extends cdk.Stack {
       ecsClusterName: gateway.ecsService.cluster.clusterName,
       ecsServiceName: gateway.ecsService.serviceName,
       albFullName: gateway.alb.loadBalancerFullName,
+    });
+
+    // Output Application Inference Profile ARNs for developer settings.json
+    new cdk.CfnOutput(this, 'InferenceProfileArnOpus', {
+      value: inferenceProfile.opus46Arn,
+      description: 'Application Inference Profile ARN for Claude Opus (ANTHROPIC_DEFAULT_OPUS_MODEL)',
+    });
+    new cdk.CfnOutput(this, 'InferenceProfileArnSonnet', {
+      value: inferenceProfile.sonnet46Arn,
+      description: 'Application Inference Profile ARN for Claude Sonnet (ANTHROPIC_DEFAULT_SONNET_MODEL)',
+    });
+    new cdk.CfnOutput(this, 'InferenceProfileArnHaiku', {
+      value: inferenceProfile.haiku45Arn,
+      description: 'Application Inference Profile ARN for Claude Haiku (ANTHROPIC_DEFAULT_HAIKU_MODEL)',
     });
 
     // Grant ECS task role write access to audit table.

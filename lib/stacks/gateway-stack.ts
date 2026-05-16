@@ -19,6 +19,12 @@ export interface GatewayStackProps {
   ecsSg: ec2.ISecurityGroup;
   dbCluster: rds.DatabaseCluster;
   certificateArn: string;
+  inferenceProfileArns: {
+    opus47: string;
+    opus46: string;
+    sonnet46: string;
+    haiku45: string;
+  };
 }
 
 export class GatewayStack extends cdk.NestedStack {
@@ -69,7 +75,10 @@ export class GatewayStack extends cdk.NestedStack {
         'bedrock:InvokeModelWithResponseStream',
       ],
       resources: [
-        `arn:aws:bedrock:*:${this.account}:inference-profile/global.anthropic.claude-*`,
+        props.inferenceProfileArns.opus47,
+        props.inferenceProfileArns.opus46,
+        props.inferenceProfileArns.sonnet46,
+        props.inferenceProfileArns.haiku45,
         'arn:aws:bedrock:*::foundation-model/anthropic.claude-*',
       ],
     }));
@@ -110,34 +119,34 @@ export class GatewayStack extends cdk.NestedStack {
       environment: {
         DB_NAME: 'litellm',
         STORE_PROMPTS_IN_SPEND_LOGS: 'True',
+        INFERENCE_PROFILE_ARN_OPUS_4_7: props.inferenceProfileArns.opus47,
+        INFERENCE_PROFILE_ARN_OPUS_4_6: props.inferenceProfileArns.opus46,
+        INFERENCE_PROFILE_ARN_SONNET_4_6: props.inferenceProfileArns.sonnet46,
+        INFERENCE_PROFILE_ARN_HAIKU_4_5: props.inferenceProfileArns.haiku45,
       },
       entryPoint: ['sh', '-c'],
       command: [
         [
           'export DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"',
           `python3 -c "
-import yaml
+import yaml, os
 cfg = {
     'model_list': [
         {
-            'model_name': 'global.anthropic.claude-opus-4-7',
-            'litellm_params': {'model': 'bedrock/global.anthropic.claude-opus-4-7'},
+            'model_name': os.environ['INFERENCE_PROFILE_ARN_OPUS_4_7'],
+            'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_OPUS_4_7']},
         },
         {
-            'model_name': 'global.anthropic.claude-opus-4-6-v1',
-            'litellm_params': {'model': 'bedrock/global.anthropic.claude-opus-4-6-v1'},
+            'model_name': os.environ['INFERENCE_PROFILE_ARN_OPUS_4_6'],
+            'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_OPUS_4_6']},
         },
         {
-            'model_name': 'global.anthropic.claude-sonnet-4-6',
-            'litellm_params': {'model': 'bedrock/global.anthropic.claude-sonnet-4-6'},
+            'model_name': os.environ['INFERENCE_PROFILE_ARN_SONNET_4_6'],
+            'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_SONNET_4_6']},
         },
         {
-            'model_name': 'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
-            'litellm_params': {'model': 'bedrock/global.anthropic.claude-sonnet-4-5-20250929-v1:0'},
-        },
-        {
-            'model_name': 'global.anthropic.claude-haiku-4-5-20251001-v1:0',
-            'litellm_params': {'model': 'bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0'},
+            'model_name': os.environ['INFERENCE_PROFILE_ARN_HAIKU_4_5'],
+            'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_HAIKU_4_5']},
         },
     ],
     'general_settings': {

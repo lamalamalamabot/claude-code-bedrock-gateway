@@ -12,7 +12,7 @@ LLM Gateway는 [Claude Code 공식 문서](https://code.claude.com/docs/en/llm-g
 - **팀 자동 매핑**: IAM Identity Center 그룹 → LiteLLM 팀 자동 연동 (팀별 예산/사용량 관리)
 - **Virtual Key 캐싱**: DynamoDB 기반 캐시로 반복 인증 시 빠른 응답
 - **팀별 예산 관리**: LiteLLM의 팀/사용자별 예산 설정 및 초과 차단
-- **Cross-Region Inference**: `global.` 접두어 모델로 여러 리전에 분산 추론
+- **Application Inference Profile**: CDK로 자동 생성되는 Application Inference Profile을 통한 추론 (태깅 기반 비용 추적, CloudWatch 메트릭 분리)
 - **모니터링**: CloudWatch Dashboard, CPU/5xx 알람, SNS 알림
 - **감사 로그**: DynamoDB 기반 사용자별 API 호출 기록
 
@@ -110,7 +110,7 @@ IAM Identity Center                    LiteLLM
 | DB (감사/설정) | DynamoDB (PAY_PER_REQUEST) | Audit 테이블 + Config 테이블 (Virtual Key 캐시) |
 | 모니터링 | CloudWatch Dashboard + Alarms | ECS/ALB 메트릭, CPU/5xx 알람 |
 | 네트워크 | VPC (2 AZ, NAT GW 1개) | Bedrock VPC Endpoint, S3/DynamoDB Gateway Endpoint |
-| AI 모델 | Amazon Bedrock (Cross-Region) | Claude Opus 4.6, Sonnet 4.6, Haiku 4.5 (`global.` prefix) |
+| AI 모델 | Amazon Bedrock (Application Inference Profile) | Claude Opus 4.7/4.6, Sonnet 4.6/4.5, Haiku 4.5 |
 
 ## 디렉토리 구조
 
@@ -125,6 +125,7 @@ claude-code-bedrock-gateway/
 │       ├── root-stack.ts                # 루트 스택 (NestedStack 오케스트레이션, 권한 wiring)
 │       ├── network-stack.ts             # VPC, SG, VPC Endpoints
 │       ├── database-stack.ts            # Aurora Serverless v2
+│       ├── inference-profile-stack.ts   # Bedrock Application Inference Profile (모델별 생성)
 │       ├── auth-stack.ts                # Token Service (Lambda + API Gateway)
 │       ├── gateway-stack.ts             # ALB + ECS Fargate + LiteLLM
 │       └── monitoring-stack.ts          # DynamoDB (Audit/Config), CloudWatch
@@ -159,16 +160,17 @@ claude-code-bedrock-gateway/
 
 ```
 LlmGatewayStack (Root)
-├── Network    — VPC (2 AZ), Security Groups, VPC Endpoints (Bedrock, S3, DynamoDB)
-├── Database   — Aurora Serverless v2 (PostgreSQL 15.15, 0.5~4 ACU)
+├── Network            — VPC (2 AZ), Security Groups, VPC Endpoints (Bedrock, S3, DynamoDB)
+├── Database           — Aurora Serverless v2 (PostgreSQL 15.15, 0.5~4 ACU)
 │     └── depends on: Network
-├── Auth       — Token Service Lambda + API Gateway (IAM Auth)
+├── InferenceProfile   — Bedrock Application Inference Profile (모델별 5개 생성)
+├── Auth               — Token Service Lambda + API Gateway (IAM Auth)
 │     └── depends on: Network
 │     └── IAM: Secrets Manager, DynamoDB, Identity Store
-├── Gateway    — ECS Fargate + ALB (HTTPS) + LiteLLM Proxy
-│     └── depends on: Network, Database
-│     └── IAM: Bedrock InvokeModel, CloudWatch, DynamoDB (Audit)
-└── Monitoring — DynamoDB (Audit/Config), CloudWatch Dashboard, SNS Alarms
+├── Gateway            — ECS Fargate + ALB (HTTPS) + LiteLLM Proxy
+│     └── depends on: Network, Database, InferenceProfile
+│     └── IAM: Bedrock InvokeModel (Application Inference Profile ARN), CloudWatch, DynamoDB (Audit)
+└── Monitoring         — DynamoDB (Audit/Config), CloudWatch Dashboard, SNS Alarms
       └── depends on: Gateway
 ```
 
@@ -266,9 +268,9 @@ NestedStack 구조이므로 루트 스택 하나만 배포하면 모든 하위 �
        "CLAUDE_CODE_SKIP_BEDROCK_AUTH": "1",
        "AWS_REGION": "ap-northeast-2",
        "AWS_PROFILE": "claude-code",
-       "ANTHROPIC_DEFAULT_OPUS_MODEL": "global.anthropic.claude-opus-4-6-v1",
-       "ANTHROPIC_DEFAULT_SONNET_MODEL": "global.anthropic.claude-sonnet-4-6",
-       "ANTHROPIC_DEFAULT_HAIKU_MODEL": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+       "ANTHROPIC_DEFAULT_OPUS_MODEL": "arn:aws:bedrock:ap-northeast-2:{ACCOUNT_ID}:application-inference-profile/{OPUS_PROFILE_ID}",
+       "ANTHROPIC_DEFAULT_SONNET_MODEL": "arn:aws:bedrock:ap-northeast-2:{ACCOUNT_ID}:application-inference-profile/{SONNET_PROFILE_ID}",
+       "ANTHROPIC_DEFAULT_HAIKU_MODEL": "arn:aws:bedrock:ap-northeast-2:{ACCOUNT_ID}:application-inference-profile/{HAIKU_PROFILE_ID}",
        "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
        "NODE_EXTRA_CA_CERTS": "/path/to/server.crt"
      },
@@ -292,9 +294,9 @@ NestedStack 구조이므로 루트 스택 하나만 배포하면 모든 하위 �
 | `CLAUDE_CODE_SKIP_BEDROCK_AUTH` | `1` | SigV4 인증 생략 (Gateway가 처리) |
 | `AWS_REGION` | `ap-northeast-2` | AWS 리전 |
 | `AWS_PROFILE` | `claude-code` | SSO 프로필 (apiKeyHelper가 참조) |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `global.anthropic.claude-opus-4-6-v1` | Opus 모델 (Cross-Region) |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `global.anthropic.claude-sonnet-4-6` | Sonnet 모델 (Cross-Region) |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | Haiku 모델 (Cross-Region) |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `arn:aws:bedrock:ap-northeast-2:{ACCOUNT_ID}:application-inference-profile/{OPUS_PROFILE_ID}` | Opus 모델 (Application Inference Profile) |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `arn:aws:bedrock:ap-northeast-2:{ACCOUNT_ID}:application-inference-profile/{SONNET_PROFILE_ID}` | Sonnet 모델 (Application Inference Profile) |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `arn:aws:bedrock:ap-northeast-2:{ACCOUNT_ID}:application-inference-profile/{HAIKU_PROFILE_ID}` | Haiku 모델 (Application Inference Profile) |
 | `NODE_EXTRA_CA_CERTS` | `/path/to/server.crt` | 자체서명 인증서 경로 |
 
 ## 관련 문서
@@ -311,6 +313,6 @@ NestedStack 구조이므로 루트 스택 하나만 배포하면 모든 하위 �
 Based on [aws-samples/sample-aws-kr-enterprise](https://github.com/aws-samples/sample-aws-kr-enterprise/tree/main/ai-ml/claude-code-bedrock-enterprise-blueprint) with the following enhancements:
 
 - IAM Identity Center group → LiteLLM team automatic mapping
-- Cross-Region Inference support (`global.` model prefix)
+- Application Inference Profile support (CDK-managed, tagged per model)
 - Developer onboarding guide
 - ap-northeast-2 region configuration
