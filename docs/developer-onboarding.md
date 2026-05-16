@@ -132,9 +132,9 @@ bash /저장한/경로/get-gateway-token.sh
     "CLAUDE_CODE_SKIP_BEDROCK_AUTH": "1",
     "AWS_REGION": "ap-northeast-2",
     "AWS_PROFILE": "claude-code",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "arn:aws:bedrock:ap-northeast-2:{ACCOUNT_ID}:application-inference-profile/{OPUS_PROFILE_ID}",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "arn:aws:bedrock:ap-northeast-2:{ACCOUNT_ID}:application-inference-profile/{SONNET_PROFILE_ID}",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "arn:aws:bedrock:ap-northeast-2:{ACCOUNT_ID}:application-inference-profile/{HAIKU_PROFILE_ID}",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "global.anthropic.claude-opus-4-7",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "global.anthropic.claude-sonnet-4-6",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
     "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
     "NODE_EXTRA_CA_CERTS": "/본인경로/server.crt"
   },

@@ -1,29 +1,30 @@
 # LiteLLM 프로덕션 설정
 # Bedrock pass-through 모드로 Claude Code 요청을 Amazon Bedrock으로 전달
-# Application Inference Profile ARN을 model_name으로 사용
+# model_name은 클라이언트가 보내는 global.* ID를 그대로 유지하고,
+# litellm_params.model에서 Application Inference Profile ARN으로 실제 라우팅
 # 실제 ARN은 CDK 배포 시 컨테이너 환경변수로 주입됨 (아래는 참고용 예시)
 
 model_list:
   # Claude Opus 4.7
-  - model_name: arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{OPUS_4_7_PROFILE_ID}
+  - model_name: global.anthropic.claude-opus-4-7
     litellm_params:
       model: bedrock/arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{OPUS_4_7_PROFILE_ID}
       aws_region_name: ap-northeast-2
 
   # Claude Opus 4.6
-  - model_name: arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{OPUS_4_6_PROFILE_ID}
+  - model_name: global.anthropic.claude-opus-4-6-v1
     litellm_params:
       model: bedrock/arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{OPUS_4_6_PROFILE_ID}
       aws_region_name: ap-northeast-2
 
   # Claude Sonnet 4.6
-  - model_name: arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{SONNET_4_6_PROFILE_ID}
+  - model_name: global.anthropic.claude-sonnet-4-6
     litellm_params:
       model: bedrock/arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{SONNET_4_6_PROFILE_ID}
       aws_region_name: ap-northeast-2
 
   # Claude Haiku 4.5
-  - model_name: arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{HAIKU_4_5_PROFILE_ID}
+  - model_name: global.anthropic.claude-haiku-4-5-20251001-v1:0
     litellm_params:
       model: bedrock/arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{HAIKU_4_5_PROFILE_ID}
       aws_region_name: ap-northeast-2

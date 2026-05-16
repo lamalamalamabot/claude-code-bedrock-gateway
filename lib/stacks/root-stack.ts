@@ -94,15 +94,15 @@ export class RootStack extends cdk.Stack {
     // Output Application Inference Profile ARNs for developer settings.json
     new cdk.CfnOutput(this, 'InferenceProfileArnOpus', {
       value: inferenceProfile.opus46Arn,
-      description: 'Application Inference Profile ARN for Claude Opus (ANTHROPIC_DEFAULT_OPUS_MODEL)',
+      description: 'Application Inference Profile ARN for Claude Opus (LiteLLM routes global.* to this ARN)',
     });
     new cdk.CfnOutput(this, 'InferenceProfileArnSonnet', {
       value: inferenceProfile.sonnet46Arn,
-      description: 'Application Inference Profile ARN for Claude Sonnet (ANTHROPIC_DEFAULT_SONNET_MODEL)',
+      description: 'Application Inference Profile ARN for Claude Sonnet (LiteLLM routes global.* to this ARN)',
     });
     new cdk.CfnOutput(this, 'InferenceProfileArnHaiku', {
       value: inferenceProfile.haiku45Arn,
-      description: 'Application Inference Profile ARN for Claude Haiku (ANTHROPIC_DEFAULT_HAIKU_MODEL)',
+      description: 'Application Inference Profile ARN for Claude Haiku (LiteLLM routes global.* to this ARN)',
     });
 
     // Grant ECS task role write access to audit table.

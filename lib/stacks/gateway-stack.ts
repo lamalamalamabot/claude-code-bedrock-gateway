@@ -133,19 +133,19 @@ import yaml, os
 cfg = {
     'model_list': [
         {
-            'model_name': os.environ['INFERENCE_PROFILE_ARN_OPUS_4_7'],
+            'model_name': 'global.anthropic.claude-opus-4-7',
             'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_OPUS_4_7']},
         },
         {
-            'model_name': os.environ['INFERENCE_PROFILE_ARN_OPUS_4_6'],
+            'model_name': 'global.anthropic.claude-opus-4-6-v1',
             'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_OPUS_4_6']},
         },
         {
-            'model_name': os.environ['INFERENCE_PROFILE_ARN_SONNET_4_6'],
+            'model_name': 'global.anthropic.claude-sonnet-4-6',
             'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_SONNET_4_6']},
         },
         {
-            'model_name': os.environ['INFERENCE_PROFILE_ARN_HAIKU_4_5'],
+            'model_name': 'global.anthropic.claude-haiku-4-5-20251001-v1:0',
             'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_HAIKU_4_5']},
         },
     ],
