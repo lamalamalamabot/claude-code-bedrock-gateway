@@ -5,7 +5,6 @@ import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import type * as rds from 'aws-cdk-lib/aws-rds';
 import { Construct } from 'constructs';
@@ -33,7 +32,6 @@ export class GatewayStack extends cdk.NestedStack {
   public readonly ecsService: ecs.FargateService;
   public readonly taskDefinition: ecs.FargateTaskDefinition;
   public readonly litellmMasterKeySecret: secretsmanager.Secret;
-  public readonly logBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props: GatewayStackProps) {
     super(scope, id);
@@ -63,31 +61,13 @@ export class GatewayStack extends cdk.NestedStack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // --- S3: LLM Logs ---
-    this.logBucket = new s3.Bucket(this, 'LlmLogBucket', {
-      bucketName: `${PROJECT_NAME}-llm-logs-${cdk.Aws.ACCOUNT_ID}`,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      lifecycleRules: [
-        {
-          id: 'TransitionToIA',
-          transitions: [
-            { storageClass: s3.StorageClass.INFREQUENT_ACCESS, transitionAfter: cdk.Duration.days(30) },
-            { storageClass: s3.StorageClass.GLACIER, transitionAfter: cdk.Duration.days(90) },
-          ],
-          expiration: cdk.Duration.days(365),
-        },
-      ],
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-
     // --- Task Definition ---
     this.taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu: 4096,
       memoryLimitMiB: 8192,
     });
 
-    // Task Role: Bedrock, CloudWatch, Logs
+    // Task Role: Bedrock, CloudWatch
     this.taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
       sid: 'BedrockAccess',
       actions: [
@@ -121,8 +101,6 @@ export class GatewayStack extends cdk.NestedStack {
       },
     }));
 
-    this.logBucket.grantWrite(this.taskDefinition.taskRole);
-
     // --- Container ---
     this.taskDefinition.addContainer('litellm', {
       image: ecs.ContainerImage.fromRegistry('ghcr.io/berriai/litellm:main-latest'),
@@ -145,7 +123,6 @@ export class GatewayStack extends cdk.NestedStack {
         INFERENCE_PROFILE_ARN_OPUS_4_6: props.inferenceProfileArns.opus46,
         INFERENCE_PROFILE_ARN_SONNET_4_6: props.inferenceProfileArns.sonnet46,
         INFERENCE_PROFILE_ARN_HAIKU_4_5: props.inferenceProfileArns.haiku45,
-        S3_LOG_BUCKET_NAME: this.logBucket.bucketName,
         AWS_REGION: cdk.Aws.REGION,
       },
       entryPoint: ['sh', '-c'],
@@ -179,55 +156,10 @@ cfg = {
     'litellm_settings': {
         'drop_params': True,
         'request_timeout': 600,
-        'success_callback': ['s3_v2'],
-        'failure_callback': ['s3_v2'],
-        's3_callback_params': {
-            's3_bucket_name': os.environ['S3_LOG_BUCKET_NAME'],
-            's3_region_name': os.environ.get('AWS_REGION', 'ap-northeast-2'),
-            's3_path': 'litellm-logs',
-            's3_use_team_prefix': True,
-        },
     },
 }
 with open('/tmp/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
-"`,
-          `python3 -c "
-import importlib, inspect, glob, os
-
-# Patch 1: base_invoke_transformation.py - get_bedrock_invoke_provider fallback
-mod1 = importlib.import_module('litellm.llms.bedrock.chat.invoke_transformations.base_invoke_transformation')
-p1 = inspect.getfile(mod1)
-with open(p1) as f: s1 = f.read()
-if 'application-inference-profile' not in s1:
-    old1 = '            if provider in model:\\n                return provider\\n        return None'
-    new1 = '            if provider in model:\\n                return provider\\n        if \\\"application-inference-profile\\\" in model:\\n            return \\\"anthropic\\\"\\n        return None'
-    assert old1 in s1, 'Patch1 target not found in ' + p1
-    with open(p1,'w') as f: f.write(s1.replace(old1, new1))
-    print('PATCH1 applied: ' + p1)
-else:
-    print('PATCH1 already applied')
-
-# Patch 2: passthrough/transformation.py - handle None invoke_provider gracefully
-mod2 = importlib.import_module('litellm.llms.bedrock.passthrough.transformation')
-p2 = inspect.getfile(mod2)
-with open(p2) as f: s2 = f.read()
-if 'application-inference-profile' not in s2:
-    old2 = '            invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)\\n            if invoke_provider is None:\\n                raise ValueError('
-    new2 = '            invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)\\n            if invoke_provider is None and \\\"application-inference-profile\\\" in model:\\n                invoke_provider = \\\"anthropic\\\"\\n            if invoke_provider is None:\\n                raise ValueError('
-    assert old2 in s2, 'Patch2 target not found in ' + p2
-    with open(p2,'w') as f: f.write(s2.replace(old2, new2))
-    print('PATCH2 applied: ' + p2)
-else:
-    print('PATCH2 already applied')
-
-# Clear .pyc caches so Python recompiles patched files
-for p in [p1, p2]:
-    d = os.path.join(os.path.dirname(p), '__pycache__')
-    if os.path.isdir(d):
-        for pyc in glob.glob(os.path.join(d, '*.pyc')):
-            os.remove(pyc)
-        print('Cleared cache: ' + d)
 "`,
           'exec litellm --port 4000 --config /tmp/config.yaml',
         ].join(' && '),
