@@ -161,17 +161,22 @@ with open('/tmp/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
 "`,
           `python3 -c "
-import importlib, inspect, glob, os, sys
+import subprocess, glob, os, sys
 MARKER = 'invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)'
 PROFILE = 'application-inference-profile'
 PROVIDER = 'anthropic'
-mod = importlib.import_module('litellm.llms.bedrock.passthrough.transformation')
-path = inspect.getfile(mod)
-with open(path) as f:
-    lines = f.readlines()
-if any(PROFILE in l and 'invoke_provider' in l for l in lines):
-    print('SKIP: ' + path)
-else:
+target = 'litellm/llms/bedrock/passthrough/transformation.py'
+result = subprocess.run(['find', '/', '-path', '*/' + target, '-type', 'f'], capture_output=True, text=True, timeout=30)
+paths = [p.strip() for p in result.stdout.strip().split(chr(10)) if p.strip()]
+if not paths:
+    print('ERROR: no transformation.py found')
+    sys.exit(1)
+for path in paths:
+    with open(path) as f:
+        lines = f.readlines()
+    if any(PROFILE in l and 'invoke_provider' in l for l in lines):
+        print('SKIP: ' + path)
+        continue
     ok = False
     out = []
     for i, line in enumerate(lines):
@@ -191,8 +196,8 @@ else:
         f.writelines(out)
     d = os.path.join(os.path.dirname(path), '__pycache__')
     if os.path.isdir(d):
-        for p in glob.glob(os.path.join(d, '*.pyc')):
-            os.remove(p)
+        for pyc in glob.glob(os.path.join(d, '*.pyc')):
+            os.remove(pyc)
     print('PATCHED: ' + path)
 "`,
           'exec litellm --port 4000 --config /tmp/config.yaml',
