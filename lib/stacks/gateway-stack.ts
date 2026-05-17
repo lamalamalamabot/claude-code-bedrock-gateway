@@ -178,7 +178,7 @@ cfg = {
     'litellm_settings': {
         'drop_params': True,
         'request_timeout': 600,
-        'callbacks': ['s3_v2'],
+        'success_callback': ['s3_v2'],
         's3_callback_params': {
             's3_bucket_name': os.environ['S3_LOG_BUCKET_NAME'],
             's3_region_name': os.environ.get('AWS_REGION', 'ap-northeast-2'),
