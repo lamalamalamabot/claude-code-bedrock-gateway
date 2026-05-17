@@ -4,7 +4,6 @@ import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as rds from 'aws-cdk-lib/aws-rds';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 import { PROJECT_NAME } from '../config/constants';
@@ -12,29 +11,41 @@ import { PROJECT_NAME } from '../config/constants';
 export interface ExportStackProps {
   vpc: ec2.IVpc;
   lambdaSg: ec2.ISecurityGroup;
-  dbCluster: rds.DatabaseCluster;
-  logBucket: s3.Bucket;
+  dbSecretArn: string;
+  logBucketName: string;
 }
 
 export class ExportStack extends cdk.NestedStack {
+  public readonly logBucket: s3.Bucket;
+  public readonly auroraS3Role: iam.Role;
+
   constructor(scope: Construct, id: string, props: ExportStackProps) {
     super(scope, id);
 
+    // S3 bucket for spend log exports
+    this.logBucket = new s3.Bucket(this, 'SpendLogBucket', {
+      bucketName: `${PROJECT_NAME}-spend-logs-${cdk.Aws.ACCOUNT_ID}`,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      lifecycleRules: [
+        {
+          id: 'TransitionToIA',
+          transitions: [
+            { storageClass: s3.StorageClass.INFREQUENT_ACCESS, transitionAfter: cdk.Duration.days(30) },
+            { storageClass: s3.StorageClass.GLACIER, transitionAfter: cdk.Duration.days(90) },
+          ],
+          expiration: cdk.Duration.days(365),
+        },
+      ],
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
     // IAM Role for Aurora to write directly to S3 via aws_s3 extension
-    const auroraS3Role = new iam.Role(this, 'AuroraS3ExportRole', {
+    this.auroraS3Role = new iam.Role(this, 'AuroraS3ExportRole', {
       roleName: `${PROJECT_NAME}-aurora-s3-export`,
       assumedBy: new iam.ServicePrincipal('rds.amazonaws.com'),
     });
-    props.logBucket.grantWrite(auroraS3Role);
-
-    // Associate the IAM role with the Aurora cluster
-    const cfnCluster = props.dbCluster.node.defaultChild as rds.CfnDBCluster;
-    cfnCluster.addPropertyOverride('AssociatedRoles', [
-      {
-        RoleArn: auroraS3Role.roleArn,
-        FeatureName: 's3Export',
-      },
-    ]);
+    this.logBucket.grantWrite(this.auroraS3Role);
 
     // Lambda: executes aws_s3.query_export_to_s3() on Aurora
     const exportFn = new lambda.Function(this, 'SpendLogExporterFn', {
@@ -67,16 +78,19 @@ export class ExportStack extends cdk.NestedStack {
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [props.lambdaSg],
       environment: {
-        DB_SECRET_ARN: props.dbCluster.secret!.secretArn,
+        DB_SECRET_ARN: props.dbSecretArn,
         DB_NAME: 'litellm',
-        S3_BUCKET_NAME: props.logBucket.bucketName,
+        S3_BUCKET_NAME: this.logBucket.bucketName,
         S3_PREFIX: 'spend-logs',
         S3_REGION: cdk.Aws.REGION,
       },
     });
 
     // Lambda needs to read DB credentials from Secrets Manager
-    props.dbCluster.secret!.grantRead(exportFn);
+    exportFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['secretsmanager:GetSecretValue'],
+      resources: [props.dbSecretArn],
+    }));
 
     // EventBridge: run every hour
     new events.Rule(this, 'HourlyExportRule', {
@@ -86,7 +100,7 @@ export class ExportStack extends cdk.NestedStack {
     });
 
     new cdk.CfnOutput(this, 'ExportBucketName', {
-      value: props.logBucket.bucketName,
+      value: this.logBucket.bucketName,
       description: 'S3 bucket for spend log exports',
     });
   }
