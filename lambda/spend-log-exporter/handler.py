@@ -45,8 +45,8 @@ def export_to_s3(conn, start_time, end_time, s3_key):
     query = f"""
     SELECT * FROM aws_s3.query_export_to_s3(
         'SELECT * FROM "LiteLLM_SpendLogs"
-        WHERE "startTime" >= ''{start_time.isoformat()}''
-          AND "startTime" < ''{end_time.isoformat()}''
+        WHERE "startTime" >= ''{start_time.strftime("%Y-%m-%d %H:%M:%S")}''
+          AND "startTime" < ''{end_time.strftime("%Y-%m-%d %H:%M:%S")}''
         ORDER BY "startTime"',
         aws_commons.create_s3_uri(
             '{S3_BUCKET}',
@@ -62,8 +62,13 @@ def export_to_s3(conn, start_time, end_time, s3_key):
 
 def handler(event, context):
     now = datetime.now(timezone.utc)
-    end_time = now.replace(minute=0, second=0, microsecond=0)
-    start_time = end_time - timedelta(hours=EXPORT_INTERVAL_HOURS)
+
+    if event.get("start_time") and event.get("end_time"):
+        start_time = datetime.fromisoformat(event["start_time"])
+        end_time = datetime.fromisoformat(event["end_time"])
+    else:
+        end_time = now.replace(minute=0, second=0, microsecond=0)
+        start_time = end_time - timedelta(hours=EXPORT_INTERVAL_HOURS)
 
     s3_key = f"{S3_PREFIX}/{start_time.strftime('%Y/%m/%d')}/{start_time.strftime('%H')}00-{end_time.strftime('%H')}00.csv"
 
