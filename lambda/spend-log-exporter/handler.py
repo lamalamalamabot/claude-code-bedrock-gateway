@@ -44,34 +44,7 @@ def ensure_extension(conn):
 def export_to_s3(conn, start_time, end_time, s3_key):
     query = f"""
     SELECT * FROM aws_s3.query_export_to_s3(
-        'SELECT
-            "request_id",
-            "call_type",
-            "api_key",
-            "spend",
-            "total_tokens",
-            "prompt_tokens",
-            "completion_tokens",
-            "startTime",
-            "endTime",
-            "completionStartTime",
-            "model",
-            "model_id",
-            "model_group",
-            "api_base",
-            "user",
-            "metadata",
-            "cache_hit",
-            "cache_key",
-            "request_tags",
-            "team_id",
-            "end_user",
-            "requester_ip_address",
-            "messages",
-            "response",
-            "request_body",
-            "response_body"
-        FROM "LiteLLM_SpendLogs"
+        'SELECT * FROM "LiteLLM_SpendLogs"
         WHERE "startTime" >= ''{start_time.isoformat()}''
           AND "startTime" < ''{end_time.isoformat()}''
         ORDER BY "startTime"',
@@ -80,7 +53,7 @@ def export_to_s3(conn, start_time, end_time, s3_key):
             '{s3_key}',
             '{S3_REGION}'
         ),
-        options := 'FORMAT CSV, HEADER TRUE'
+        options := ''FORMAT CSV, HEADER TRUE''
     );
     """
     result = conn.run(query)
@@ -94,14 +67,14 @@ def handler(event, context):
 
     s3_key = f"{S3_PREFIX}/{start_time.strftime('%Y/%m/%d')}/{start_time.strftime('%H')}00-{end_time.strftime('%H')}00.csv"
 
-    logger.info(f"Exporting spend logs: {start_time} ~ {end_time} → s3://{S3_BUCKET}/{s3_key}")
+    logger.info(f"Exporting spend logs: {start_time} ~ {end_time} -> s3://{S3_BUCKET}/{s3_key}")
 
     conn = get_db_connection()
     try:
         ensure_extension(conn)
         result = export_to_s3(conn, start_time, end_time, s3_key)
         rows_exported = result[0] if result else 0
-        logger.info(f"Export complete: {rows_exported} rows → s3://{S3_BUCKET}/{s3_key}")
+        logger.info(f"Export complete: {rows_exported} rows -> s3://{S3_BUCKET}/{s3_key}")
         return {
             "statusCode": 200,
             "body": {
@@ -112,4 +85,3 @@ def handler(event, context):
         }
     finally:
         conn.close()
-
