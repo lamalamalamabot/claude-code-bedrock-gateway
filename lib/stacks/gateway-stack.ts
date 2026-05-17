@@ -191,6 +191,20 @@ cfg = {
 with open('/tmp/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
 "`,
+          `python3 -c "
+import importlib, inspect
+mod = importlib.import_module('litellm.llms.bedrock.chat.invoke_transformations.base_invoke_transformation')
+p = inspect.getfile(mod)
+with open(p) as f: s = f.read()
+if 'application-inference-profile' not in s:
+    old = '            if provider in model:\\n                return provider\\n        return None'
+    new = '            if provider in model:\\n                return provider\\n        if \\\"application-inference-profile\\\" in model:\\n            return \\\"anthropic\\\"\\n        return None'
+    assert old in s, 'Patch target not found'
+    with open(p,'w') as f: f.write(s.replace(old, new))
+    print('PATCHED: Application Inference Profile provider fallback added')
+else:
+    print('PATCH: already applied')
+"`,
           'exec litellm --port 4000 --config /tmp/config.yaml',
         ].join(' && '),
       ],
