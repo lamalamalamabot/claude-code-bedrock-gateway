@@ -53,7 +53,7 @@ def export_to_s3(conn, start_time, end_time, s3_key):
             '{s3_key}',
             '{S3_REGION}'
         ),
-        options := ''FORMAT CSV, HEADER TRUE''
+        options := 'FORMAT CSV, HEADER TRUE'
     );
     """
     result = conn.run(query)
