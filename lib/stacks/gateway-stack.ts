@@ -160,6 +160,45 @@ cfg = {
 with open('/tmp/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
 "`,
+          `python3 -c "
+import importlib, inspect, glob, os
+
+# Patch get_bedrock_invoke_provider to return 'anthropic' for Application Inference Profile ARNs.
+# Without this, success spend logging silently fails because the function returns None,
+# causing a ValueError in handle_logging_collected_chunks (passthrough/transformation.py:202-206).
+# The ValueError is swallowed by asyncio.create_task, so no error is visible.
+# Upstream issue: https://github.com/BerriAI/litellm/issues/28105
+
+targets = [
+    'litellm.llms.bedrock.base_aws_llm',
+    'litellm.llms.bedrock.chat.invoke_transformations.base_invoke_transformation',
+]
+for mod_name in targets:
+    mod = importlib.import_module(mod_name)
+    path = inspect.getfile(mod)
+    with open(path) as f:
+        src = f.read()
+    if 'application-inference-profile' in src:
+        print(f'SKIP (already patched): {path}')
+        continue
+    marker = '    return None'
+    count = src.count(marker)
+    if count == 0:
+        print(f'WARN: patch target not found in {path}')
+        continue
+    patched = src.replace(
+        marker,
+        '    if \\\"application-inference-profile\\\" in model:\\n        return \\\"anthropic\\\"\\n    return None',
+        1
+    )
+    with open(path, 'w') as f:
+        f.write(patched)
+    cache_dir = os.path.join(os.path.dirname(path), '__pycache__')
+    if os.path.isdir(cache_dir):
+        for pyc in glob.glob(os.path.join(cache_dir, '*.pyc')):
+            os.remove(pyc)
+    print(f'PATCHED: {path}')
+"`,
           'exec litellm --port 4000 --config /tmp/config.yaml',
         ].join(' && '),
       ],
