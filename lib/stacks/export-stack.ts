@@ -6,25 +6,23 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
-import { PROJECT_NAME } from '../config/constants';
+import { PROJECT_NAME, SPEND_LOG_BUCKET_PREFIX } from '../config/constants';
 
 export interface ExportStackProps {
   vpc: ec2.IVpc;
   lambdaSg: ec2.ISecurityGroup;
   dbSecretArn: string;
-  logBucketName: string;
 }
 
 export class ExportStack extends cdk.NestedStack {
   public readonly logBucket: s3.Bucket;
-  public readonly auroraS3Role: iam.Role;
 
   constructor(scope: Construct, id: string, props: ExportStackProps) {
     super(scope, id);
 
     // S3 bucket for spend log exports
     this.logBucket = new s3.Bucket(this, 'SpendLogBucket', {
-      bucketName: `${PROJECT_NAME}-spend-logs-${cdk.Aws.ACCOUNT_ID}`,
+      bucketName: `${SPEND_LOG_BUCKET_PREFIX}-${cdk.Aws.ACCOUNT_ID}`,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       lifecycleRules: [
@@ -39,13 +37,6 @@ export class ExportStack extends cdk.NestedStack {
       ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
-
-    // IAM Role for Aurora to write directly to S3 via aws_s3 extension
-    this.auroraS3Role = new iam.Role(this, 'AuroraS3ExportRole', {
-      roleName: `${PROJECT_NAME}-aurora-s3-export`,
-      assumedBy: new iam.ServicePrincipal('rds.amazonaws.com'),
-    });
-    this.logBucket.grantWrite(this.auroraS3Role);
 
     // Lambda: executes aws_s3.query_export_to_s3() on Aurora
     const exportFn = new lambda.Function(this, 'SpendLogExporterFn', {

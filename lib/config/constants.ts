@@ -9,6 +9,8 @@ export const MODELS = {
 
 export const DEFAULT_REGION = 'ap-northeast-2';
 
+export const SPEND_LOG_BUCKET_PREFIX = 'claude-code-enterprise-spend-logs';
+
 export const BUDGET = {
   MONTHLY_LIMIT_USD: 1000,
   ALERT_THRESHOLDS_PCT: [70, 90, 100],

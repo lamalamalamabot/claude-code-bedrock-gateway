@@ -127,21 +127,11 @@ export class RootStack extends cdk.Stack {
     );
 
     // Spend log export: Aurora → S3 (hourly)
-    const exportStack = new ExportStack(this, 'Export', {
+    new ExportStack(this, 'Export', {
       vpc: network.vpc,
       lambdaSg: network.lambdaSg,
       dbSecretArn: database.cluster.secret!.secretArn,
-      logBucketName: gateway.logBucket.bucketName,
     });
-
-    // Associate S3 export IAM role with Aurora cluster (done here to avoid circular dependency)
-    const cfnCluster = database.cluster.node.defaultChild as cdk.aws_rds.CfnDBCluster;
-    cfnCluster.addPropertyOverride('AssociatedRoles', [
-      {
-        RoleArn: exportStack.auroraS3Role.roleArn,
-        FeatureName: 's3Export',
-      },
-    ]);
 
   }
 }
