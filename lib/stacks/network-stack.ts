@@ -124,6 +124,14 @@ export class NetworkStack extends cdk.NestedStack {
       service: ec2.GatewayVpcEndpointAwsService.S3,
     });
 
+    // Aurora (aws_s3 extension) needs outbound HTTPS to S3 via Gateway Endpoint.
+    // Isolated subnet has no internet route, so this only reaches S3.
+    this.rdsSg.addEgressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(443),
+      'Allow HTTPS to S3 for aws_s3 export',
+    );
+
     this.vpc.addGatewayEndpoint('DynamoDbEndpoint', {
       service: ec2.GatewayVpcEndpointAwsService.DYNAMODB,
     });
