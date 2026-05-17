@@ -161,6 +161,43 @@ cfg = {
 with open('/tmp/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
 "`,
+          `python3 -c "
+import importlib, inspect, glob, os
+
+# Patch: get_bedrock_invoke_provider cannot parse Application Inference Profile ARNs
+# (no provider substring in opaque ID). Fall back to 'anthropic' for these ARNs.
+# Without this patch, success callbacks (including DB spend logging) silently fail.
+# Upstream issue: https://github.com/BerriAI/litellm/issues/28105
+
+patches = [
+    'litellm.llms.bedrock.chat.invoke_transformations.base_invoke_transformation',
+    'litellm.llms.bedrock.passthrough.transformation',
+]
+for mod_name in patches:
+    mod = importlib.import_module(mod_name)
+    path = inspect.getfile(mod)
+    with open(path) as f:
+        src = f.read()
+    if 'application-inference-profile' in src:
+        print(f'SKIP (already patched): {path}')
+        continue
+    old = '            if provider in model:\\n                return provider\\n        return None'
+    if old not in src:
+        old2 = '            invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)\\n            if invoke_provider is None:\\n                raise ValueError('
+        new2 = '            invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)\\n            if invoke_provider is None and \\\"application-inference-profile\\\" in model:\\n                invoke_provider = \\\"anthropic\\\"\\n            if invoke_provider is None:\\n                raise ValueError('
+        assert old2 in src, f'Patch target not found in {path}'
+        with open(path, 'w') as f:
+            f.write(src.replace(old2, new2))
+    else:
+        new = '            if provider in model:\\n                return provider\\n        if \\\"application-inference-profile\\\" in model:\\n            return \\\"anthropic\\\"\\n        return None'
+        with open(path, 'w') as f:
+            f.write(src.replace(old, new))
+    cache_dir = os.path.join(os.path.dirname(path), '__pycache__')
+    if os.path.isdir(cache_dir):
+        for pyc in glob.glob(os.path.join(cache_dir, '*.pyc')):
+            os.remove(pyc)
+    print(f'PATCHED: {path}')
+"`,
           'exec litellm --port 4000 --config /tmp/config.yaml',
         ].join(' && '),
       ],
