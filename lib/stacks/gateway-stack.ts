@@ -163,27 +163,31 @@ with open('/tmp/config.yaml', 'w') as f:
           `python3 << 'PATCH_SCRIPT'
 import importlib, inspect, glob, os, sys
 
-# Patch passthrough/transformation.py to handle Application Inference Profile ARNs.
-# Line ~203-207: invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)
-#                if invoke_provider is None: raise ValueError(...)
-# For App Inference Profile ARNs, provider returns None → ValueError → silent logging failure.
-# Upstream issue: https://github.com/BerriAI/litellm/issues/28105
-
 mod = importlib.import_module('litellm.llms.bedrock.passthrough.transformation')
 path = inspect.getfile(mod)
 with open(path) as f:
-    src = f.read()
+    lines = f.readlines()
 
-if 'application-inference-profile' in src:
+if any('application-inference-profile' in l for l in lines):
     print(f'SKIP (already patched): {path}')
 else:
-    old = '            invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)\n            if invoke_provider is None:\n                raise ValueError('
-    if old not in src:
+    patched = False
+    new_lines = []
+    for i, line in enumerate(lines):
+        new_lines.append(line)
+        if (line.strip() == 'invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)'
+            and i + 1 < len(lines)
+            and 'if invoke_provider is None:' in lines[i + 1]
+            and 'raise ValueError' in lines[i + 2]):
+            indent = line[:len(line) - len(line.lstrip())]
+            new_lines.append(f'{indent}if invoke_provider is None and "application-inference-profile" in model:\n')
+            new_lines.append(f'{indent}    invoke_provider = "anthropic"\n')
+            patched = True
+    if not patched:
         print(f'ERROR: patch target not found in {path}')
         sys.exit(1)
-    new = '            invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)\n            if invoke_provider is None and "application-inference-profile" in model:\n                invoke_provider = "anthropic"\n            if invoke_provider is None:\n                raise ValueError('
     with open(path, 'w') as f:
-        f.write(src.replace(old, new, 1))
+        f.writelines(new_lines)
     cache_dir = os.path.join(os.path.dirname(path), '__pycache__')
     if os.path.isdir(cache_dir):
         for pyc in glob.glob(os.path.join(cache_dir, '*.pyc')):
