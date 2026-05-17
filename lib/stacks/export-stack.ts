@@ -48,6 +48,17 @@ export class ExportStack extends cdk.NestedStack {
             'bash', '-c',
             'pip install -r requirements.txt -t /asset-output && cp handler.py /asset-output/',
           ],
+          local: {
+            tryBundle(outputDir: string) {
+              const { execSync } = require('child_process');
+              try {
+                execSync(`pip install -r lambda/spend-log-exporter/requirements.txt -t ${outputDir} && cp lambda/spend-log-exporter/handler.py ${outputDir}/`);
+                return true;
+              } catch {
+                return false;
+              }
+            },
+          },
         },
       }),
       memorySize: 256,
