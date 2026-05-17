@@ -192,18 +192,41 @@ with open('/tmp/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
 "`,
           `python3 -c "
-import importlib, inspect
-mod = importlib.import_module('litellm.llms.bedrock.chat.invoke_transformations.base_invoke_transformation')
-p = inspect.getfile(mod)
-with open(p) as f: s = f.read()
-if 'application-inference-profile' not in s:
-    old = '            if provider in model:\\n                return provider\\n        return None'
-    new = '            if provider in model:\\n                return provider\\n        if \\\"application-inference-profile\\\" in model:\\n            return \\\"anthropic\\\"\\n        return None'
-    assert old in s, 'Patch target not found'
-    with open(p,'w') as f: f.write(s.replace(old, new))
-    print('PATCHED: Application Inference Profile provider fallback added')
+import importlib, inspect, glob, os
+
+# Patch 1: base_invoke_transformation.py - get_bedrock_invoke_provider fallback
+mod1 = importlib.import_module('litellm.llms.bedrock.chat.invoke_transformations.base_invoke_transformation')
+p1 = inspect.getfile(mod1)
+with open(p1) as f: s1 = f.read()
+if 'application-inference-profile' not in s1:
+    old1 = '            if provider in model:\\n                return provider\\n        return None'
+    new1 = '            if provider in model:\\n                return provider\\n        if \\\"application-inference-profile\\\" in model:\\n            return \\\"anthropic\\\"\\n        return None'
+    assert old1 in s1, 'Patch1 target not found in ' + p1
+    with open(p1,'w') as f: f.write(s1.replace(old1, new1))
+    print('PATCH1 applied: ' + p1)
 else:
-    print('PATCH: already applied')
+    print('PATCH1 already applied')
+
+# Patch 2: passthrough/transformation.py - handle None invoke_provider gracefully
+mod2 = importlib.import_module('litellm.llms.bedrock.passthrough.transformation')
+p2 = inspect.getfile(mod2)
+with open(p2) as f: s2 = f.read()
+if 'application-inference-profile' not in s2:
+    old2 = '            invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)\\n            if invoke_provider is None:\\n                raise ValueError('
+    new2 = '            invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)\\n            if invoke_provider is None and \\\"application-inference-profile\\\" in model:\\n                invoke_provider = \\\"anthropic\\\"\\n            if invoke_provider is None:\\n                raise ValueError('
+    assert old2 in s2, 'Patch2 target not found in ' + p2
+    with open(p2,'w') as f: f.write(s2.replace(old2, new2))
+    print('PATCH2 applied: ' + p2)
+else:
+    print('PATCH2 already applied')
+
+# Clear .pyc caches so Python recompiles patched files
+for p in [p1, p2]:
+    d = os.path.join(os.path.dirname(p), '__pycache__')
+    if os.path.isdir(d):
+        for pyc in glob.glob(os.path.join(d, '*.pyc')):
+            os.remove(pyc)
+        print('Cleared cache: ' + d)
 "`,
           'exec litellm --port 4000 --config /tmp/config.yaml',
         ].join(' && '),
