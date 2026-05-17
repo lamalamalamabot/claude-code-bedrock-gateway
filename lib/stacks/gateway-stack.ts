@@ -33,6 +33,7 @@ export class GatewayStack extends cdk.NestedStack {
   public readonly ecsService: ecs.FargateService;
   public readonly taskDefinition: ecs.FargateTaskDefinition;
   public readonly litellmMasterKeySecret: secretsmanager.Secret;
+  public readonly logBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props: GatewayStackProps) {
     super(scope, id);
@@ -63,7 +64,7 @@ export class GatewayStack extends cdk.NestedStack {
     });
 
     // --- S3: LLM Logs ---
-    const logBucket = new s3.Bucket(this, 'LlmLogBucket', {
+    this.logBucket = new s3.Bucket(this, 'LlmLogBucket', {
       bucketName: `${PROJECT_NAME}-llm-logs-${cdk.Aws.ACCOUNT_ID}`,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -120,7 +121,7 @@ export class GatewayStack extends cdk.NestedStack {
       },
     }));
 
-    logBucket.grantWrite(this.taskDefinition.taskRole);
+    this.logBucket.grantWrite(this.taskDefinition.taskRole);
 
     // --- Container ---
     this.taskDefinition.addContainer('litellm', {
@@ -144,7 +145,7 @@ export class GatewayStack extends cdk.NestedStack {
         INFERENCE_PROFILE_ARN_OPUS_4_6: props.inferenceProfileArns.opus46,
         INFERENCE_PROFILE_ARN_SONNET_4_6: props.inferenceProfileArns.sonnet46,
         INFERENCE_PROFILE_ARN_HAIKU_4_5: props.inferenceProfileArns.haiku45,
-        S3_LOG_BUCKET_NAME: logBucket.bucketName,
+        S3_LOG_BUCKET_NAME: this.logBucket.bucketName,
         AWS_REGION: cdk.Aws.REGION,
       },
       entryPoint: ['sh', '-c'],

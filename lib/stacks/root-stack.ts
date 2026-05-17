@@ -7,6 +7,7 @@ import { AuthStack } from './auth-stack';
 import { GatewayStack } from './gateway-stack';
 import { InferenceProfileStack } from './inference-profile-stack';
 import { MonitoringStack } from './monitoring-stack';
+import { ExportStack } from './export-stack';
 
 // Hardcoded table name to break circular dependency between Gateway and Monitoring NestedStacks.
 // MonitoringStack creates the table with this exact name.
@@ -124,6 +125,14 @@ export class RootStack extends cdk.Stack {
       'AUDIT_TABLE_NAME',
       AUDIT_TABLE_NAME,
     );
+
+    // Spend log export: Aurora → S3 (hourly)
+    new ExportStack(this, 'Export', {
+      vpc: network.vpc,
+      lambdaSg: network.lambdaSg,
+      dbCluster: database.cluster,
+      logBucket: gateway.logBucket,
+    });
 
   }
 }
