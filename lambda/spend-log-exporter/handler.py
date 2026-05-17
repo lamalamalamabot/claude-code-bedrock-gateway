@@ -33,7 +33,7 @@ def get_db_connection():
         user=secret["username"],
         password=secret["password"],
         database=os.environ.get("DB_NAME", "litellm"),
-        timeout=10,
+        timeout=240,
     )
 
 
