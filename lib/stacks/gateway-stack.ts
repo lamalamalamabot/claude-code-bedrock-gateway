@@ -160,45 +160,36 @@ cfg = {
 with open('/tmp/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
 "`,
-          `python3 -c "
-import importlib, inspect, glob, os
+          `python3 << 'PATCH_SCRIPT'
+import importlib, inspect, glob, os, sys
 
-# Patch get_bedrock_invoke_provider to return 'anthropic' for Application Inference Profile ARNs.
-# Without this, success spend logging silently fails because the function returns None,
-# causing a ValueError in handle_logging_collected_chunks (passthrough/transformation.py:202-206).
-# The ValueError is swallowed by asyncio.create_task, so no error is visible.
+# Patch passthrough/transformation.py to handle Application Inference Profile ARNs.
+# Line ~203-207: invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)
+#                if invoke_provider is None: raise ValueError(...)
+# For App Inference Profile ARNs, provider returns None → ValueError → silent logging failure.
 # Upstream issue: https://github.com/BerriAI/litellm/issues/28105
 
-targets = [
-    'litellm.llms.bedrock.base_aws_llm',
-    'litellm.llms.bedrock.chat.invoke_transformations.base_invoke_transformation',
-]
-for mod_name in targets:
-    mod = importlib.import_module(mod_name)
-    path = inspect.getfile(mod)
-    with open(path) as f:
-        src = f.read()
-    if 'application-inference-profile' in src:
-        print(f'SKIP (already patched): {path}')
-        continue
-    marker = '    return None'
-    count = src.count(marker)
-    if count == 0:
-        print(f'WARN: patch target not found in {path}')
-        continue
-    patched = src.replace(
-        marker,
-        '    if \\\"application-inference-profile\\\" in model:\\n        return \\\"anthropic\\\"\\n    return None',
-        1
-    )
+mod = importlib.import_module('litellm.llms.bedrock.passthrough.transformation')
+path = inspect.getfile(mod)
+with open(path) as f:
+    src = f.read()
+
+if 'application-inference-profile' in src:
+    print(f'SKIP (already patched): {path}')
+else:
+    old = '            invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)\n            if invoke_provider is None:\n                raise ValueError('
+    if old not in src:
+        print(f'ERROR: patch target not found in {path}')
+        sys.exit(1)
+    new = '            invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)\n            if invoke_provider is None and "application-inference-profile" in model:\n                invoke_provider = "anthropic"\n            if invoke_provider is None:\n                raise ValueError('
     with open(path, 'w') as f:
-        f.write(patched)
+        f.write(src.replace(old, new, 1))
     cache_dir = os.path.join(os.path.dirname(path), '__pycache__')
     if os.path.isdir(cache_dir):
         for pyc in glob.glob(os.path.join(cache_dir, '*.pyc')):
             os.remove(pyc)
     print(f'PATCHED: {path}')
-"`,
+PATCH_SCRIPT`,
           'exec litellm --port 4000 --config /tmp/config.yaml',
         ].join(' && '),
       ],
