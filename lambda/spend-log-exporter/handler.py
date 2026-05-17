@@ -12,7 +12,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import boto3
-import psycopg2
+import pg8000.native
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -27,20 +27,18 @@ def get_db_connection():
     secret_arn = os.environ["DB_SECRET_ARN"]
     client = boto3.client("secretsmanager")
     secret = json.loads(client.get_secret_value(SecretId=secret_arn)["SecretString"])
-    return psycopg2.connect(
+    return pg8000.native.Connection(
         host=secret["host"],
-        port=secret["port"],
+        port=int(secret["port"]),
         user=secret["username"],
         password=secret["password"],
-        dbname=os.environ.get("DB_NAME", "litellm"),
-        connect_timeout=10,
+        database=os.environ.get("DB_NAME", "litellm"),
+        timeout=10,
     )
 
 
 def ensure_extension(conn):
-    with conn.cursor() as cur:
-        cur.execute("CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE;")
-    conn.commit()
+    conn.run("CREATE EXTENSION IF NOT EXISTS aws_s3 CASCADE;")
 
 
 def export_to_s3(conn, start_time, end_time, s3_key):
@@ -85,11 +83,8 @@ def export_to_s3(conn, start_time, end_time, s3_key):
         options := 'FORMAT CSV, HEADER TRUE'
     );
     """
-    with conn.cursor() as cur:
-        cur.execute(query)
-        result = cur.fetchone()
-    conn.commit()
-    return result
+    result = conn.run(query)
+    return result[0] if result else None
 
 
 def handler(event, context):
@@ -117,3 +112,4 @@ def handler(event, context):
         }
     finally:
         conn.close()
+
