@@ -160,41 +160,41 @@ cfg = {
 with open('/tmp/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
 "`,
-          `python3 << 'PATCH_SCRIPT'
+          `python3 -c "
 import importlib, inspect, glob, os, sys
-
+MARKER = 'invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)'
+PROFILE = 'application-inference-profile'
+PROVIDER = 'anthropic'
 mod = importlib.import_module('litellm.llms.bedrock.passthrough.transformation')
 path = inspect.getfile(mod)
 with open(path) as f:
     lines = f.readlines()
-
-already_patched = any('application-inference-profile' in l and 'invoke_provider' in l for l in lines)
-if already_patched:
-    print(f'SKIP (already patched): {path}')
+if any(PROFILE in l and 'invoke_provider' in l for l in lines):
+    print('SKIP: ' + path)
 else:
-    patched = False
-    new_lines = []
+    ok = False
+    out = []
     for i, line in enumerate(lines):
-        new_lines.append(line)
-        if (line.strip() == 'invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)'
+        out.append(line)
+        if (line.strip() == MARKER
             and i + 1 < len(lines)
             and 'if invoke_provider is None:' in lines[i + 1]
             and 'raise ValueError' in lines[i + 2]):
-            indent = line[:len(line) - len(line.lstrip())]
-            new_lines.append(f'{indent}if invoke_provider is None and "application-inference-profile" in model:\n')
-            new_lines.append(f'{indent}    invoke_provider = "anthropic"\n')
-            patched = True
-    if not patched:
-        print(f'ERROR: patch target not found in {path}')
+            ind = line[:len(line) - len(line.lstrip())]
+            out.append(ind + 'if invoke_provider is None and ' + repr(PROFILE) + ' in model:' + chr(10))
+            out.append(ind + '    invoke_provider = ' + repr(PROVIDER) + chr(10))
+            ok = True
+    if not ok:
+        print('ERROR: target not found in ' + path)
         sys.exit(1)
     with open(path, 'w') as f:
-        f.writelines(new_lines)
-    cache_dir = os.path.join(os.path.dirname(path), '__pycache__')
-    if os.path.isdir(cache_dir):
-        for pyc in glob.glob(os.path.join(cache_dir, '*.pyc')):
-            os.remove(pyc)
-    print(f'PATCHED: {path}')
-PATCH_SCRIPT`,
+        f.writelines(out)
+    d = os.path.join(os.path.dirname(path), '__pycache__')
+    if os.path.isdir(d):
+        for p in glob.glob(os.path.join(d, '*.pyc')):
+            os.remove(p)
+    print('PATCHED: ' + path)
+"`,
           'exec litellm --port 4000 --config /tmp/config.yaml',
         ].join(' && '),
       ],
