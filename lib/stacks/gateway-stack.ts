@@ -168,7 +168,8 @@ path = inspect.getfile(mod)
 with open(path) as f:
     lines = f.readlines()
 
-if any('application-inference-profile' in l for l in lines):
+already_patched = any('application-inference-profile' in l and 'invoke_provider' in l for l in lines)
+if already_patched:
     print(f'SKIP (already patched): {path}')
 else:
     patched = False
