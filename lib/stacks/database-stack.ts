@@ -60,7 +60,7 @@ export class DatabaseStack extends cdk.NestedStack {
 
     if (this.s3ExportKey) {
       auroraS3Role.addToPolicy(new iam.PolicyStatement({
-        actions: ['kms:GenerateDataKey', 'kms:Encrypt'],
+        actions: ['kms:GenerateDataKey', 'kms:Encrypt', 'kms:Decrypt'],
         resources: [this.s3ExportKey.keyArn],
       }));
     }
