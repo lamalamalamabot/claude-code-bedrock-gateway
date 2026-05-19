@@ -87,12 +87,6 @@ export class ExportStack extends cdk.NestedStack {
       resources: [props.dbSecretArn],
     }));
 
-    // S3 write permission
-    exportFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['s3:PutObject'],
-      resources: [`arn:aws:s3:::${targetBucketName}/*`],
-    }));
-
     // EventBridge: run every hour
     new events.Rule(this, 'HourlyExportRule', {
       ruleName: `${PROJECT_NAME}-spend-log-export`,
