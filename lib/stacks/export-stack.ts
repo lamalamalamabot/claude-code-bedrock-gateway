@@ -20,6 +20,8 @@ export class ExportStack extends cdk.NestedStack {
   constructor(scope: Construct, id: string, props: ExportStackProps) {
     super(scope, id);
 
+    const externalBucket = this.node.tryGetContext('spendLogExportBucket') as string | undefined;
+
     // S3 bucket for spend log exports
     this.logBucket = new s3.Bucket(this, 'SpendLogBucket', {
       bucketName: `${SPEND_LOG_BUCKET_PREFIX}-${cdk.Aws.ACCOUNT_ID}`,
@@ -37,6 +39,8 @@ export class ExportStack extends cdk.NestedStack {
       ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
+
+    const targetBucketName = externalBucket || this.logBucket.bucketName;
 
     // Lambda: executes aws_s3.query_export_to_s3() on Aurora
     const exportFn = new lambda.Function(this, 'SpendLogExporterFn', {
@@ -71,7 +75,7 @@ export class ExportStack extends cdk.NestedStack {
       environment: {
         DB_SECRET_ARN: props.dbSecretArn,
         DB_NAME: 'litellm',
-        S3_BUCKET_NAME: this.logBucket.bucketName,
+        S3_BUCKET_NAME: targetBucketName,
         S3_PREFIX: 'spend-logs',
         S3_REGION: cdk.Aws.REGION,
       },
@@ -83,6 +87,12 @@ export class ExportStack extends cdk.NestedStack {
       resources: [props.dbSecretArn],
     }));
 
+    // S3 write permission
+    exportFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['s3:PutObject'],
+      resources: [`arn:aws:s3:::${targetBucketName}/*`],
+    }));
+
     // EventBridge: run every hour
     new events.Rule(this, 'HourlyExportRule', {
       ruleName: `${PROJECT_NAME}-spend-log-export`,
@@ -91,7 +101,7 @@ export class ExportStack extends cdk.NestedStack {
     });
 
     new cdk.CfnOutput(this, 'ExportBucketName', {
-      value: this.logBucket.bucketName,
+      value: targetBucketName,
       description: 'S3 bucket for spend log exports',
     });
   }

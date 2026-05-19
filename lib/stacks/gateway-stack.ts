@@ -8,7 +8,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import type * as rds from 'aws-cdk-lib/aws-rds';
 import { Construct } from 'constructs';
-import { PROJECT_NAME, SPEND_LOG_BUCKET_PREFIX } from '../config/constants';
+import { PROJECT_NAME } from '../config/constants';
 
 // LiteLLM config.yaml is generated at container startup and passed via --config.
 // Enables prompt storage in spend logs and model persistence in DB.
@@ -101,12 +101,6 @@ export class GatewayStack extends cdk.NestedStack {
       },
     }));
 
-    this.taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
-      sid: 'S3LogWrite',
-      actions: ['s3:PutObject'],
-      resources: [`arn:aws:s3:::${SPEND_LOG_BUCKET_PREFIX}-${cdk.Aws.ACCOUNT_ID}/litellm-s3-logs/*`],
-    }));
-
     // --- Container ---
     this.taskDefinition.addContainer('litellm', {
       image: ecs.ContainerImage.fromRegistry('ghcr.io/berriai/litellm:main-latest'),
@@ -129,7 +123,6 @@ export class GatewayStack extends cdk.NestedStack {
         INFERENCE_PROFILE_ARN_OPUS_4_6: props.inferenceProfileArns.opus46,
         INFERENCE_PROFILE_ARN_SONNET_4_6: props.inferenceProfileArns.sonnet46,
         INFERENCE_PROFILE_ARN_HAIKU_4_5: props.inferenceProfileArns.haiku45,
-        S3_LOG_BUCKET_NAME: `${SPEND_LOG_BUCKET_PREFIX}-${cdk.Aws.ACCOUNT_ID}`,
       },
       entryPoint: ['sh', '-c'],
       command: [
@@ -162,13 +155,8 @@ cfg = {
     'litellm_settings': {
         'drop_params': True,
         'request_timeout': 600,
-        'success_callback': ['s3_v2'],
-        'failure_callback': ['s3_v2'],
-        's3_callback_params': {
-            's3_bucket_name': os.environ['S3_LOG_BUCKET_NAME'],
-            's3_region_name': 'ap-northeast-2',
-            's3_path': 'litellm-s3-logs',
-        },
+        'max_internal_user_budget': 100,
+        'internal_user_budget_duration': '1d',
     },
 }
 with open('/tmp/config.yaml', 'w') as f:
