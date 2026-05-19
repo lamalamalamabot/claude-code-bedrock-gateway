@@ -9,6 +9,8 @@ import { PROJECT_NAME, SPEND_LOG_BUCKET_PREFIX } from '../config/constants';
 export interface DatabaseStackProps {
   vpc: ec2.IVpc;
   rdsSg: ec2.ISecurityGroup;
+  spendLogExportBucket?: string;
+  spendLogExportAccountId?: string;
 }
 
 export class DatabaseStack extends cdk.NestedStack {
@@ -18,8 +20,8 @@ export class DatabaseStack extends cdk.NestedStack {
   constructor(scope: Construct, id: string, props: DatabaseStackProps) {
     super(scope, id);
 
-    const externalBucket = this.node.tryGetContext('spendLogExportBucket') as string | undefined;
-    const externalAccountId = this.node.tryGetContext('spendLogExportAccountId') as string | undefined;
+    const externalBucket = props.spendLogExportBucket;
+    const externalAccountId = props.spendLogExportAccountId;
     const targetBucketName = externalBucket || `${SPEND_LOG_BUCKET_PREFIX}-${cdk.Aws.ACCOUNT_ID}`;
 
     // KMS key for S3 export encryption (only when exporting to external account)

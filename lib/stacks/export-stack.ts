@@ -13,6 +13,7 @@ export interface ExportStackProps {
   lambdaSg: ec2.ISecurityGroup;
   dbSecretArn: string;
   s3ExportKeyArn?: string;
+  spendLogExportBucket?: string;
 }
 
 export class ExportStack extends cdk.NestedStack {
@@ -21,7 +22,7 @@ export class ExportStack extends cdk.NestedStack {
   constructor(scope: Construct, id: string, props: ExportStackProps) {
     super(scope, id);
 
-    const externalBucket = this.node.tryGetContext('spendLogExportBucket') as string | undefined;
+    const externalBucket = props.spendLogExportBucket;
 
     // S3 bucket for spend log exports
     this.logBucket = new s3.Bucket(this, 'SpendLogBucket', {

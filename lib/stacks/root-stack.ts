@@ -18,11 +18,16 @@ export class RootStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    const spendLogExportBucket = this.node.tryGetContext('spendLogExportBucket') as string | undefined;
+    const spendLogExportAccountId = this.node.tryGetContext('spendLogExportAccountId') as string | undefined;
+
     const network = new NetworkStack(this, 'Network');
 
     const database = new DatabaseStack(this, 'Database', {
       vpc: network.vpc,
       rdsSg: network.rdsSg,
+      spendLogExportBucket,
+      spendLogExportAccountId,
     });
 
     const inferenceProfile = new InferenceProfileStack(this, 'InferenceProfile');
@@ -132,6 +137,7 @@ export class RootStack extends cdk.Stack {
       lambdaSg: network.lambdaSg,
       dbSecretArn: database.cluster.secret!.secretArn,
       s3ExportKeyArn: database.s3ExportKey?.keyArn,
+      spendLogExportBucket,
     });
 
   }
