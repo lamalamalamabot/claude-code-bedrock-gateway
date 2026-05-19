@@ -17,13 +17,16 @@ export class DatabaseStack extends cdk.NestedStack {
     super(scope, id);
 
     // IAM Role for Aurora to write to S3 via aws_s3 extension
+    const externalBucket = this.node.tryGetContext('spendLogExportBucket') as string | undefined;
+    const targetBucketName = externalBucket || `${SPEND_LOG_BUCKET_PREFIX}-${cdk.Aws.ACCOUNT_ID}`;
+
     const auroraS3Role = new iam.Role(this, 'AuroraS3ExportRole', {
       roleName: `${PROJECT_NAME}-aurora-s3-export`,
       assumedBy: new iam.ServicePrincipal('rds.amazonaws.com'),
     });
     auroraS3Role.addToPolicy(new iam.PolicyStatement({
       actions: ['s3:PutObject', 's3:AbortMultipartUpload'],
-      resources: [`arn:aws:s3:::${SPEND_LOG_BUCKET_PREFIX}-${cdk.Aws.ACCOUNT_ID}/*`],
+      resources: [`arn:aws:s3:::${targetBucketName}/*`],
     }));
 
     this.cluster = new rds.DatabaseCluster(this, 'AuroraCluster', {
