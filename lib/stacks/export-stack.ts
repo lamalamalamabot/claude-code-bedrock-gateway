@@ -12,6 +12,7 @@ export interface ExportStackProps {
   vpc: ec2.IVpc;
   lambdaSg: ec2.ISecurityGroup;
   dbSecretArn: string;
+  s3ExportKeyArn?: string;
 }
 
 export class ExportStack extends cdk.NestedStack {
@@ -78,6 +79,7 @@ export class ExportStack extends cdk.NestedStack {
         S3_BUCKET_NAME: targetBucketName,
         S3_PREFIX: 'spend-logs',
         S3_REGION: cdk.Aws.REGION,
+        ...(props.s3ExportKeyArn && { S3_KMS_KEY_ARN: props.s3ExportKeyArn }),
       },
     });
 

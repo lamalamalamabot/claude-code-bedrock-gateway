@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as kms from 'aws-cdk-lib/aws-kms';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import { Construct } from 'constructs';
 import { PROJECT_NAME, SPEND_LOG_BUCKET_PREFIX } from '../config/constants';
@@ -12,14 +13,40 @@ export interface DatabaseStackProps {
 
 export class DatabaseStack extends cdk.NestedStack {
   public readonly cluster: rds.DatabaseCluster;
+  public readonly s3ExportKey: kms.IKey | undefined;
 
   constructor(scope: Construct, id: string, props: DatabaseStackProps) {
     super(scope, id);
 
-    // IAM Role for Aurora to write to S3 via aws_s3 extension
     const externalBucket = this.node.tryGetContext('spendLogExportBucket') as string | undefined;
+    const externalAccountId = this.node.tryGetContext('spendLogExportAccountId') as string | undefined;
     const targetBucketName = externalBucket || `${SPEND_LOG_BUCKET_PREFIX}-${cdk.Aws.ACCOUNT_ID}`;
 
+    // KMS key for S3 export encryption (only when exporting to external account)
+    if (externalAccountId) {
+      this.s3ExportKey = new kms.Key(this, 'S3ExportKey', {
+        alias: `${PROJECT_NAME}/s3-export`,
+        description: 'Encrypts Aurora S3 exports for cross-account access',
+        policy: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              sid: 'KeyAdmin',
+              actions: ['kms:*'],
+              principals: [new iam.AccountRootPrincipal()],
+              resources: ['*'],
+            }),
+            new iam.PolicyStatement({
+              sid: 'TargetAccountDecrypt',
+              actions: ['kms:Decrypt', 'kms:DescribeKey'],
+              principals: [new iam.AccountPrincipal(externalAccountId)],
+              resources: ['*'],
+            }),
+          ],
+        }),
+      });
+    }
+
+    // IAM Role for Aurora to write to S3 via aws_s3 extension
     const auroraS3Role = new iam.Role(this, 'AuroraS3ExportRole', {
       roleName: `${PROJECT_NAME}-aurora-s3-export`,
       assumedBy: new iam.ServicePrincipal('rds.amazonaws.com'),
@@ -28,6 +55,13 @@ export class DatabaseStack extends cdk.NestedStack {
       actions: ['s3:PutObject', 's3:AbortMultipartUpload'],
       resources: [`arn:aws:s3:::${targetBucketName}/*`],
     }));
+
+    if (this.s3ExportKey) {
+      auroraS3Role.addToPolicy(new iam.PolicyStatement({
+        actions: ['kms:GenerateDataKey', 'kms:Encrypt'],
+        resources: [this.s3ExportKey.keyArn],
+      }));
+    }
 
     this.cluster = new rds.DatabaseCluster(this, 'AuroraCluster', {
       engine: rds.DatabaseClusterEngine.auroraPostgres({

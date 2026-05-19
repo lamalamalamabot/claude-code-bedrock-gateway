@@ -20,6 +20,7 @@ logger.setLevel(logging.INFO)
 S3_BUCKET = os.environ["S3_BUCKET_NAME"]
 S3_PREFIX = os.environ.get("S3_PREFIX", "spend-logs")
 S3_REGION = os.environ.get("S3_REGION", "ap-northeast-2")
+S3_KMS_KEY_ARN = os.environ.get("S3_KMS_KEY_ARN", "")
 EXPORT_INTERVAL_HOURS = int(os.environ.get("EXPORT_INTERVAL_HOURS", "1"))
 
 
@@ -42,6 +43,7 @@ def ensure_extension(conn):
 
 
 def export_to_s3(conn, start_time, end_time, s3_key):
+    kms_param = f", '{S3_KMS_KEY_ARN}'" if S3_KMS_KEY_ARN else ""
     query = f"""
     SELECT * FROM aws_s3.query_export_to_s3(
         'SELECT * FROM "LiteLLM_SpendLogs"
@@ -53,8 +55,7 @@ def export_to_s3(conn, start_time, end_time, s3_key):
             '{s3_key}',
             '{S3_REGION}'
         ),
-        options := 'FORMAT CSV, HEADER TRUE',
-        encryption_option := 'aws:sse_s3'
+        'FORMAT CSV, HEADER TRUE'{kms_param}
     );
     """
     result = conn.run(query)

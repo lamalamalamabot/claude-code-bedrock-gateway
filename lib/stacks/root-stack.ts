@@ -131,6 +131,7 @@ export class RootStack extends cdk.Stack {
       vpc: network.vpc,
       lambdaSg: network.lambdaSg,
       dbSecretArn: database.cluster.secret!.secretArn,
+      s3ExportKeyArn: database.s3ExportKey?.keyArn,
     });
 
   }
