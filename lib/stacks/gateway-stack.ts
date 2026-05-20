@@ -135,19 +135,35 @@ cfg = {
     'model_list': [
         {
             'model_name': 'global.anthropic.claude-opus-4-7',
-            'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_OPUS_4_7']},
+            'litellm_params': {
+                'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_OPUS_4_7'],
+                'input_cost_per_token': 0.000005,
+                'output_cost_per_token': 0.000025,
+            },
         },
         {
             'model_name': 'global.anthropic.claude-opus-4-6-v1',
-            'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_OPUS_4_6']},
+            'litellm_params': {
+                'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_OPUS_4_6'],
+                'input_cost_per_token': 0.000005,
+                'output_cost_per_token': 0.000025,
+            },
         },
         {
             'model_name': 'global.anthropic.claude-sonnet-4-6',
-            'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_SONNET_4_6']},
+            'litellm_params': {
+                'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_SONNET_4_6'],
+                'input_cost_per_token': 0.000003,
+                'output_cost_per_token': 0.000015,
+            },
         },
         {
             'model_name': 'global.anthropic.claude-haiku-4-5-20251001-v1:0',
-            'litellm_params': {'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_HAIKU_4_5']},
+            'litellm_params': {
+                'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_HAIKU_4_5'],
+                'input_cost_per_token': 0.000001,
+                'output_cost_per_token': 0.000005,
+            },
         },
     ],
     'general_settings': {
