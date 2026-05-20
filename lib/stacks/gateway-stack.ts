@@ -103,7 +103,7 @@ export class GatewayStack extends cdk.NestedStack {
 
     // --- Container ---
     this.taskDefinition.addContainer('litellm', {
-      image: ecs.ContainerImage.fromRegistry('ghcr.io/berriai/litellm:main-latest'),
+      image: ecs.ContainerImage.fromRegistry('ghcr.io/berriai/litellm:v1.85.0'),
       portMappings: [{ containerPort: 4000, protocol: ecs.Protocol.TCP }],
       logging: ecs.LogDrivers.awsLogs({
         logGroup,
@@ -127,6 +127,7 @@ export class GatewayStack extends cdk.NestedStack {
       entryPoint: ['sh', '-c'],
       command: [
         [
+          'export LITELLM_MASTER_KEY="sk-${LITELLM_MASTER_KEY}"',
           'export DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"',
           `python3 -c "
 import yaml, os
@@ -156,7 +157,7 @@ cfg = {
         'drop_params': True,
         'request_timeout': 600,
         'max_internal_user_budget': 100,
-        'internal_user_budget_duration': '1d',
+        'internal_user_budget_duration': '30d',
     },
 }
 with open('/tmp/config.yaml', 'w') as f:

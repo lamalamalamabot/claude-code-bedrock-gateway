@@ -15,6 +15,7 @@ import handler as handler_module
 # Fixtures
 # ---------------------------------------------------------------------------
 
+FAKE_MASTER_KEY_RAW = "test-master-key-1234"
 FAKE_MASTER_KEY = "sk-test-master-key-1234"
 FAKE_MASTER_KEY_ARN = "arn:aws:secretsmanager:us-east-1:123456789012:secret:litellm-master-key"
 FAKE_LITELLM_ENDPOINT = "http://internal-alb.example.com:4000"
@@ -48,7 +49,7 @@ def _env_vars():
 def _mock_secrets_manager():
     """Secrets Manager 클라이언트를 mock한다."""
     with mock.patch.object(handler_module, "_secrets_client") as mock_client:
-        mock_client.get_secret_value.return_value = {"SecretString": FAKE_MASTER_KEY}
+        mock_client.get_secret_value.return_value = {"SecretString": FAKE_MASTER_KEY_RAW}
         yield mock_client
 
 

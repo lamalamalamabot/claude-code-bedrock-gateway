@@ -315,7 +315,7 @@ def _get_master_key() -> str:
 
     secret_arn = os.environ["LITELLM_MASTER_KEY_ARN"]
     response = _secrets_client.get_secret_value(SecretId=secret_arn)
-    _master_key_cache = response["SecretString"]
+    _master_key_cache = f"sk-{response['SecretString']}"
     return _master_key_cache
 
 
