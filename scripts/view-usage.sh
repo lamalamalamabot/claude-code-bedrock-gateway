@@ -216,9 +216,7 @@ BUDGET_RESET=$(echo "$USER_INFO" | python3 -c "import sys,json; d=json.load(sys.
 KEY_SPEND=$(echo "$KEY_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('spend',0))" 2>/dev/null)
 KEY_ALIAS=$(echo "$KEY_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('key_alias','N/A'))" 2>/dev/null)
 
-# ─── 클리어 + 헤더 출력 ───────────────────────────────────────────────────────
-printf '\033[2J\033[H'
-
+# ─── 헤더 출력 ────────────────────────────────────────────────────────────────
 print_header "Claude Code Usage Dashboard"
 
 echo ""
@@ -262,45 +260,8 @@ fi
 echo ""
 printf "  ${DIM}현재 키 사용량:${RESET} %s\n" "$KEY_SPEND_FORMATTED"
 
-# ─── 3. 모델별 비용 ───────────────────────────────────────────────────────────
-print_section "모델별 비용 (Cost by Model)"
-
-GLOBAL_MODELS=$(litellm_get "/global/spend/models?limit=20")
-
-echo "$GLOBAL_MODELS" | python3 -c "
-import sys, json
-
-data = json.load(sys.stdin)
-if not data or not isinstance(data, list):
-    print('  데이터 없음')
-    sys.exit(0)
-
-def fmt_cost(v):
-    if v >= 1: return f'\${v:,.2f}'
-    elif v >= 0.01: return f'\${v:.4f}'
-    elif v > 0: return f'\${v:.6f}'
-    return '\$0.00'
-
-def fmt_tokens(v):
-    if v >= 1_000_000: return f'{v/1_000_000:.1f}M'
-    elif v >= 1_000: return f'{v/1_000:.1f}K'
-    return str(v)
-
-print()
-print(f'  \033[2m{\"모델\":<40s} {\"비용\":>12s} {\"토큰\":>12s}\033[0m')
-print(f'  ' + '─' * 70)
-for item in data:
-    model = item.get('model', '') or ''
-    if not model:
-        continue
-    short = model.replace('global.anthropic.', '').replace('bedrock/', '')
-    spend = item.get('total_spend', 0) or 0
-    tokens = item.get('total_tokens', 0) or 0
-    print(f'  {short:<40s} \033[32m{fmt_cost(spend):>12s}\033[0m {fmt_tokens(tokens):>12s}')
-" 2>/dev/null || echo -e "  ${DIM}모델별 비용 데이터를 가져올 수 없습니다${RESET}"
-
-# ─── 4. 일별 활동 ─────────────────────────────────────────────────────────────
-print_section "일별 활동 (Daily Activity: ${START_DATE} ~ ${END_DATE})"
+# ─── 3. 일별 활동 + 모델별 비용 ────────────────────────────────────────────────
+print_section "사용량 상세 (Usage Details: ${START_DATE} ~ ${END_DATE})"
 
 echo -e "${DIM}  데이터 조회 중...${RESET}"
 DAILY=$(litellm_get "/user/daily/activity?start_date=${START_DATE}&end_date=${END_DATE}&page_size=100")
@@ -328,11 +289,13 @@ total_cache_read = metadata.get('total_cache_read_input_tokens', 0)
 total_cache_create = metadata.get('total_cache_creation_input_tokens', 0)
 
 def fmt_tokens(v):
+    v = v or 0
     if v >= 1_000_000: return f'{v/1_000_000:.1f}M'
     elif v >= 1_000: return f'{v/1_000:.1f}K'
-    return str(v)
+    return str(int(v))
 
 def fmt_cost(v):
+    v = v or 0
     if v >= 1: return f'\${v:,.2f}'
     elif v >= 0.01: return f'\${v:.4f}'
     elif v > 0: return f'\${v:.6f}'
@@ -347,126 +310,62 @@ print(f'  │ \033[1m{fmt_cost(total_spend):<17s}\033[0m│ \033[1m{total_reques
 print(f'  ├──────────────────┼──────────────────┼──────────────────┤')
 print(f'  │ \033[36m프롬프트 토큰\033[0m     │ \033[36m완료 토큰\033[0m         │ \033[36m총 토큰\033[0m           │')
 print(f'  │ \033[1m{fmt_tokens(total_prompt):<17s}\033[0m│ \033[1m{fmt_tokens(total_completion):<17s}\033[0m│ \033[1m{fmt_tokens(total_tokens):<17s}\033[0m│')
-print(f'  ├──────────────────┼──────────────────┼──────────────────┘')
-print(f'  │ \033[36m캐시 읽기\033[0m         │ \033[36m캐시 생성\033[0m         │')
-print(f'  │ \033[1m{fmt_tokens(total_cache_read):<17s}\033[0m│ \033[1m{fmt_tokens(total_cache_create):<17s}\033[0m│')
-print(f'  └──────────────────┴──────────────────┘')
+print(f'  ├──────────────────┼──────────────────┼──────────────────┤')
+print(f'  │ \033[36m캐시 읽기\033[0m         │ \033[36m캐시 생성\033[0m         │ \033[36m캐시 절약율\033[0m       │')
+cache_save = (total_cache_read / total_prompt * 100) if total_prompt > 0 else 0
+print(f'  │ \033[1m{fmt_tokens(total_cache_read):<17s}\033[0m│ \033[1m{fmt_tokens(total_cache_create):<17s}\033[0m│ \033[1m\033[33m{cache_save:.1f}%\033[0m            │')
+print(f'  └──────────────────┴──────────────────┴──────────────────┘')
+
+# 모델별 비용 (breakdown에서 추출)
+model_totals = {}
+for row in results:
+    breakdown = row.get('breakdown', {})
+    models = breakdown.get('models', {})
+    for model_name, model_data in models.items():
+        if not model_name.strip():
+            continue
+        m = model_data.get('metrics', {})
+        if model_name not in model_totals:
+            model_totals[model_name] = {'spend': 0, 'prompt_tokens': 0, 'completion_tokens': 0, 'requests': 0, 'cache_read': 0}
+        model_totals[model_name]['spend'] += m.get('spend', 0) or 0
+        model_totals[model_name]['prompt_tokens'] += m.get('prompt_tokens', 0) or 0
+        model_totals[model_name]['completion_tokens'] += m.get('completion_tokens', 0) or 0
+        model_totals[model_name]['requests'] += m.get('api_requests', 0) or 0
+        model_totals[model_name]['cache_read'] += m.get('cache_read_input_tokens', 0) or 0
+
+if model_totals:
+    print()
+    print(f'  \033[1m\033[97m모델별 비용\033[0m')
+    print(f'  \033[2m{\"모델\":<35s} {\"비용\":>10s} {\"요청\":>7s} {\"입력토큰\":>10s} {\"출력토큰\":>10s} {\"캐시읽기\":>10s}\033[0m')
+    print(f'  ' + '─' * 88)
+    for model_name, totals in sorted(model_totals.items(), key=lambda x: -x[1]['spend']):
+        short = model_name.replace('global.anthropic.', '').replace('bedrock/', '')[:33]
+        spend = totals['spend']
+        if spend > 1: color = '\033[33m'
+        else: color = '\033[32m'
+        print(f'  {short:<35s} {color}{fmt_cost(spend):>10s}\033[0m {totals[\"requests\"]:>7,d} {fmt_tokens(totals[\"prompt_tokens\"]):>10s} {fmt_tokens(totals[\"completion_tokens\"]):>10s} {fmt_tokens(totals[\"cache_read\"]):>10s}')
 
 # 일별 테이블
 print()
+print(f'  \033[1m\033[97m일별 사용량\033[0m')
 print(f'  \033[2m{\"날짜\":<12s} {\"비용\":>10s} {\"요청\":>8s} {\"입력토큰\":>10s} {\"출력토큰\":>10s} {\"캐시읽기\":>10s}\033[0m')
 print(f'  ' + '─' * 70)
 
 for row in sorted(results, key=lambda x: str(x.get('date','')), reverse=True):
     date = str(row.get('date',''))[:10]
     m = row.get('metrics', {})
-    spend = m.get('spend', 0)
-    reqs = m.get('api_requests', 0)
-    prompt_t = m.get('prompt_tokens', 0)
-    comp_t = m.get('completion_tokens', 0)
-    cache_r = m.get('cache_read_input_tokens', 0)
+    spend = m.get('spend', 0) or 0
+    reqs = m.get('api_requests', 0) or 0
+    prompt_t = m.get('prompt_tokens', 0) or 0
+    comp_t = m.get('completion_tokens', 0) or 0
+    cache_r = m.get('cache_read_input_tokens', 0) or 0
 
-    # 비용 색상
     if spend > 5: color = '\033[31m'
     elif spend > 1: color = '\033[33m'
     else: color = '\033[32m'
 
     print(f'  {date:<12s} {color}{fmt_cost(spend):>10s}\033[0m {reqs:>8,d} {fmt_tokens(prompt_t):>10s} {fmt_tokens(comp_t):>10s} {fmt_tokens(cache_r):>10s}')
 " 2>/dev/null || echo -e "  ${DIM}일별 활동 데이터를 가져올 수 없습니다${RESET}"
-
-# ─── 5. 모델별 일별 활동 ──────────────────────────────────────────────────────
-print_section "모델별 활동 (Activity by Model)"
-
-ACTIVITY_MODEL=$(litellm_get "/global/activity/model?start_date=${START_DATE}&end_date=${END_DATE}")
-
-echo "$ACTIVITY_MODEL" | python3 -c "
-import sys, json
-
-data = json.load(sys.stdin)
-
-if not data or not isinstance(data, list):
-    print('  데이터 없음')
-    sys.exit(0)
-
-def fmt_tokens(v):
-    if v >= 1_000_000: return f'{v/1_000_000:.1f}M'
-    elif v >= 1_000: return f'{v/1_000:.1f}K'
-    return str(v)
-
-print()
-printf_fmt = '  {:<45s} {:>10s} {:>12s}'
-print(f'  \033[2m{\"모델\":<45s} {\"총 요청\":>10s} {\"총 토큰\":>12s}\033[0m')
-print(f'  ' + '─' * 70)
-
-for item in sorted(data, key=lambda x: x.get('sum_total_tokens', 0), reverse=True):
-    model = item.get('model', '') or ''
-    if not model.strip():
-        continue
-    short_model = model.replace('global.anthropic.', '').replace('bedrock/', '')
-    reqs = item.get('sum_api_requests', 0)
-    tokens = item.get('sum_total_tokens', 0)
-    print(f'  {short_model:<45s} {reqs:>10,d} {fmt_tokens(tokens):>12s}')
-" 2>/dev/null || echo -e "  ${DIM}모델별 활동 데이터를 가져올 수 없습니다${RESET}"
-
-# ─── 6. 캐시 히트 분석 ────────────────────────────────────────────────────────
-print_section "캐시 히트 분석 (Cache Hit Analysis)"
-
-CACHE_HITS=$(litellm_get "/global/activity/cache_hits?start_date=${START_DATE}&end_date=${END_DATE}")
-
-echo "$CACHE_HITS" | python3 -c "
-import sys, json
-
-data = json.load(sys.stdin)
-
-if not data:
-    print('  데이터 없음')
-    sys.exit(0)
-
-# 응답이 리스트일 경우 (키/모델별 집계)
-if isinstance(data, list):
-    total_rows = sum(r.get('total_rows', 0) for r in data)
-    total_hits = sum(r.get('cache_hit_true_rows', 0) for r in data)
-    hit_rate = (total_hits / total_rows * 100) if total_rows > 0 else 0
-
-    print()
-    print(f'  \033[1m\033[97m캐시 요약\033[0m')
-    print(f'  ┌──────────────────┬──────────────────┬──────────────────┐')
-    print(f'  │ \033[36m캐시 히트\033[0m         │ \033[36m총 요청\033[0m           │ \033[36m캐시 히트율\033[0m       │')
-    print(f'  │ \033[1m\033[32m{total_hits:<17,d}\033[0m│ \033[1m{total_rows:<17,d}\033[0m│ \033[1m\033[33m{hit_rate:.1f}%\033[0m            │')
-    print(f'  └──────────────────┴──────────────────┴──────────────────┘')
-
-    print()
-    print(f'  \033[2m{\"키\":<20s} {\"모델\":<25s} {\"총 요청\":>8s} {\"캐시히트\":>8s} {\"캐시토큰\":>10s} {\"생성토큰\":>10s}\033[0m')
-    print(f'  ' + '─' * 85)
-    for row in sorted(data, key=lambda x: x.get('cache_hit_true_rows', 0), reverse=True):
-        key = str(row.get('api_key', ''))[:18]
-        model = str(row.get('model', '')).replace('global.anthropic.', '').replace('bedrock/', '')[:23]
-        total = row.get('total_rows', 0) or 0
-        hits = row.get('cache_hit_true_rows', 0) or 0
-        cached_t = row.get('cached_completion_tokens', 0) or 0
-        gen_t = row.get('generated_completion_tokens', 0) or 0
-        if not model.strip():
-            continue
-        print(f'  {key:<20s} {model:<25s} {total:>8,d} {hits:>8,d} {cached_t:>10,d} {gen_t:>10,d}')
-
-elif isinstance(data, dict):
-    if 'error' in data:
-        print('  ' + data.get('error',''))
-        sys.exit(0)
-    daily = data.get('daily_data', [])
-    sum_hits = data.get('sum_cache_hits', 0)
-    sum_calls = data.get('sum_llm_api_calls', 0)
-    hit_rate = (sum_hits / sum_calls * 100) if sum_calls > 0 else 0
-
-    print()
-    print(f'  \033[1m\033[97m캐시 요약\033[0m')
-    print(f'  ┌──────────────────┬──────────────────┬──────────────────┐')
-    print(f'  │ \033[36m캐시 히트\033[0m         │ \033[36mLLM API 호출\033[0m     │ \033[36m캐시 히트율\033[0m       │')
-    print(f'  │ \033[1m\033[32m{sum_hits:<17,d}\033[0m│ \033[1m{sum_calls:<17,d}\033[0m│ \033[1m\033[33m{hit_rate:.1f}%\033[0m            │')
-    print(f'  └──────────────────┴──────────────────┴──────────────────┘')
-else:
-    print('  데이터 없음')
-" 2>/dev/null || echo -e "  ${DIM}캐시 히트 데이터를 가져올 수 없습니다${RESET}"
 
 # ─── 7. 상세 로그 (옵션) ──────────────────────────────────────────────────────
 if $SHOW_DETAIL; then
