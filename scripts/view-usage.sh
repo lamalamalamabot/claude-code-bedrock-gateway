@@ -216,6 +216,45 @@ BUDGET_RESET=$(echo "$USER_INFO" | python3 -c "import sys,json; d=json.load(sys.
 KEY_SPEND=$(echo "$KEY_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('spend',0))" 2>/dev/null)
 KEY_ALIAS=$(echo "$KEY_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('key_alias','N/A'))" 2>/dev/null)
 
+# ─── 일별 데이터 먼저 조회 (비용 요약에서도 사용) ─────────────────────────────
+# 최근 30일 전체를 가져와서 7일/30일/리셋 이후 집계에 활용
+DAILY_30D_START=$(date -u -d "30 days ago" +"%Y-%m-%d" 2>/dev/null || date -u -v-30d +"%Y-%m-%d")
+DAILY=$(litellm_get "/user/daily/activity?start_date=${DAILY_30D_START}&end_date=${END_DATE}&page_size=100")
+
+# 비용 요약 계산 (python으로 한 번에)
+COST_SUMMARY=$(echo "$DAILY" | python3 -c "
+import sys, json
+from datetime import datetime, timedelta
+
+data = json.load(sys.stdin)
+results = data.get('results', [])
+
+today = datetime.strptime('${END_DATE}', '%Y-%m-%d')
+seven_ago = (today - timedelta(days=7)).strftime('%Y-%m-%d')
+thirty_ago = (today - timedelta(days=30)).strftime('%Y-%m-%d')
+budget_reset = '${BUDGET_RESET}'
+
+spend_7d = 0
+spend_30d = 0
+spend_since_reset = 0
+
+for row in results:
+    date_str = str(row.get('date',''))[:10]
+    spend = (row.get('metrics') or {}).get('spend', 0) or 0
+    if date_str >= seven_ago:
+        spend_7d += spend
+    if date_str >= thirty_ago:
+        spend_30d += spend
+    if budget_reset and budget_reset != 'N/A' and date_str >= budget_reset:
+        spend_since_reset += spend
+
+print(f'{spend_7d}|{spend_30d}|{spend_since_reset}')
+" 2>/dev/null) || true
+
+SPEND_7D=$(echo "$COST_SUMMARY" | cut -d'|' -f1)
+SPEND_30D=$(echo "$COST_SUMMARY" | cut -d'|' -f2)
+SPEND_SINCE_RESET=$(echo "$COST_SUMMARY" | cut -d'|' -f3)
+
 # ─── 헤더 출력 ────────────────────────────────────────────────────────────────
 print_header "Claude Code Usage Dashboard"
 
@@ -225,67 +264,80 @@ echo -e "  ${DIM}사용자:${RESET} ${BOLD}${WHITE}${USER_ID}${RESET}    ${DIM}�
 # ─── 2. 비용 요약 ─────────────────────────────────────────────────────────────
 print_section "비용 요약 (Cost Summary)"
 
-SPEND_FORMATTED=$(format_cost "${USER_SPEND:-0}")
-KEY_SPEND_FORMATTED=$(format_cost "${KEY_SPEND:-0}")
+SPEND_7D_FMT=$(format_cost "${SPEND_7D:-0}")
+SPEND_30D_FMT=$(format_cost "${SPEND_30D:-0}")
+SPEND_RESET_FMT=$(format_cost "${SPEND_SINCE_RESET:-0}")
 
+echo ""
 if [[ "$USER_BUDGET" != "unlimited" && "$USER_BUDGET" != "None" && "$USER_BUDGET" != "null" ]]; then
   BUDGET_FORMATTED=$(format_cost "$USER_BUDGET")
-  PCT=$(python3 -c "print(f'{float(${USER_SPEND:-0})/float(${USER_BUDGET})*100:.1f}')" 2>/dev/null || echo "0")
+  PCT=$(python3 -c "
+s=${SPEND_SINCE_RESET:-0}
+b=${USER_BUDGET}
+print(f'{s/b*100:.1f}' if b > 0 else '0')
+" 2>/dev/null || echo "0")
 
   # 프로그레스 바
   BAR_WIDTH=40
   FILLED=$(python3 -c "print(int(min(float($PCT)/100*$BAR_WIDTH, $BAR_WIDTH)))")
   EMPTY=$((BAR_WIDTH - FILLED))
 
-  if (( $(echo "$PCT > 90" | bc -l 2>/dev/null || echo 0) )); then BAR_COLOR=$RED
-  elif (( $(echo "$PCT > 70" | bc -l 2>/dev/null || echo 0) )); then BAR_COLOR=$YELLOW
+  if python3 -c "exit(0 if $PCT > 90 else 1)" 2>/dev/null; then BAR_COLOR=$RED
+  elif python3 -c "exit(0 if $PCT > 70 else 1)" 2>/dev/null; then BAR_COLOR=$YELLOW
   else BAR_COLOR=$GREEN; fi
 
-  echo ""
-  printf "  ${DIM}총 사용량:${RESET}  ${BOLD}${WHITE}%-12s${RESET}" "$SPEND_FORMATTED"
+  printf "  ${DIM}현재 기간 사용량:${RESET} ${BOLD}${WHITE}%-12s${RESET}" "$SPEND_RESET_FMT"
   printf "  ${DIM}예산:${RESET} %-12s" "$BUDGET_FORMATTED"
   printf "  ${DIM}리셋:${RESET} %s (%s)\n" "$BUDGET_RESET" "$BUDGET_DURATION"
   echo ""
-  printf "  ${BAR_COLOR}"
+  printf "  "
+  printf "${BAR_COLOR}"
   printf '█%.0s' $(seq 1 $FILLED) 2>/dev/null
   printf "${DIM}"
   printf '░%.0s' $(seq 1 $EMPTY) 2>/dev/null
   printf "${RESET}  ${BAR_COLOR}${PCT}%%${RESET}\n"
 else
+  printf "  ${DIM}현재 기간 사용량:${RESET} ${BOLD}${WHITE}%-12s${RESET}" "$SPEND_RESET_FMT"
+  printf "  ${DIM}예산:${RESET} unlimited"
+  if [[ "$BUDGET_RESET" != "N/A" ]]; then
+    printf "  ${DIM}리셋:${RESET} %s (%s)" "$BUDGET_RESET" "$BUDGET_DURATION"
+  fi
   echo ""
-  printf "  ${DIM}총 사용량:${RESET}  ${BOLD}${WHITE}%-12s${RESET}" "$SPEND_FORMATTED"
-  printf "  ${DIM}예산:${RESET} unlimited\n"
 fi
 
 echo ""
-printf "  ${DIM}현재 키 사용량:${RESET} %s\n" "$KEY_SPEND_FORMATTED"
+printf "  ┌────────────────────────┬────────────────────────┐\n"
+printf "  │ ${CYAN}최근 7일${RESET}  ${BOLD}${WHITE}%-12s${RESET} │ ${CYAN}최근 30일${RESET}  ${BOLD}${WHITE}%-11s${RESET} │\n" "$SPEND_7D_FMT" "$SPEND_30D_FMT"
+printf "  └────────────────────────┴────────────────────────┘\n"
 
 # ─── 3. 일별 활동 + 모델별 비용 ────────────────────────────────────────────────
 print_section "사용량 상세 (Usage Details: ${START_DATE} ~ ${END_DATE})"
-
-DAILY=$(litellm_get "/user/daily/activity?start_date=${START_DATE}&end_date=${END_DATE}&page_size=100")
 
 echo "$DAILY" | python3 -c "
 import sys, json
 
 data = json.load(sys.stdin)
-results = data.get('results', [])
-metadata = data.get('metadata', {})
+all_results = data.get('results', [])
+# 사용자 지정 기간으로 필터링
+start_filter = '${START_DATE}'
+results = [r for r in all_results if str(r.get('date',''))[:10] >= start_filter]
+# 메타데이터 재계산 (필터된 결과 기준)
+metadata = {}
 
 if not results:
     print('  데이터 없음')
     sys.exit(0)
 
-# 메타데이터 요약
-total_spend = metadata.get('total_spend', 0)
-total_prompt = metadata.get('total_prompt_tokens', 0)
-total_completion = metadata.get('total_completion_tokens', 0)
-total_tokens = metadata.get('total_tokens', 0)
-total_requests = metadata.get('total_api_requests', 0)
-total_success = metadata.get('total_successful_requests', 0)
-total_failed = metadata.get('total_failed_requests', 0)
-total_cache_read = metadata.get('total_cache_read_input_tokens', 0)
-total_cache_create = metadata.get('total_cache_creation_input_tokens', 0)
+# 메타데이터를 필터된 결과에서 재계산
+total_spend = sum((r.get('metrics') or {}).get('spend', 0) or 0 for r in results)
+total_prompt = sum((r.get('metrics') or {}).get('prompt_tokens', 0) or 0 for r in results)
+total_completion = sum((r.get('metrics') or {}).get('completion_tokens', 0) or 0 for r in results)
+total_tokens = sum((r.get('metrics') or {}).get('total_tokens', 0) or 0 for r in results)
+total_requests = sum((r.get('metrics') or {}).get('api_requests', 0) or 0 for r in results)
+total_success = sum((r.get('metrics') or {}).get('successful_requests', 0) or 0 for r in results)
+total_failed = sum((r.get('metrics') or {}).get('failed_requests', 0) or 0 for r in results)
+total_cache_read = sum((r.get('metrics') or {}).get('cache_read_input_tokens', 0) or 0 for r in results)
+total_cache_create = sum((r.get('metrics') or {}).get('cache_creation_input_tokens', 0) or 0 for r in results)
 
 def fmt_tokens(v):
     v = v or 0
