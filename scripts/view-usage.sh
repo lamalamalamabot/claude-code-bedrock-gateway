@@ -215,14 +215,6 @@ BUDGET_DURATION=$(echo "$USER_INFO" | python3 -c "import sys,json; d=json.load(s
 BUDGET_RESET=$(echo "$USER_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); i=d.get('user_info',{}); r=i.get('budget_reset_at','') if i else ''; print(r[:10] if r else 'N/A')" 2>/dev/null)
 KEY_SPEND=$(echo "$KEY_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('spend',0))" 2>/dev/null)
 KEY_ALIAS=$(echo "$KEY_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('key_alias','N/A'))" 2>/dev/null)
-MODEL_SPEND=$(echo "$KEY_INFO" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-ms=d.get('info',{}).get('model_spend',{})
-if ms:
-    for m,s in sorted(ms.items(), key=lambda x:-x[1]):
-        print(f'{m}|{s}')
-" 2>/dev/null)
 
 # ─── 클리어 + 헤더 출력 ───────────────────────────────────────────────────────
 printf '\033[2J\033[H'
@@ -273,19 +265,39 @@ printf "  ${DIM}현재 키 사용량:${RESET} %s\n" "$KEY_SPEND_FORMATTED"
 # ─── 3. 모델별 비용 ───────────────────────────────────────────────────────────
 print_section "모델별 비용 (Cost by Model)"
 
-echo ""
-if [[ -n "$MODEL_SPEND" ]]; then
-  printf "  ${DIM}%-50s %12s${RESET}\n" "모델" "비용"
-  print_separator 70
-  while IFS='|' read -r model spend; do
-    spend_fmt=$(format_cost "$spend")
-    # 모델명 축약
-    short_model=$(echo "$model" | sed 's/global\.anthropic\.//;s/bedrock\///')
-    printf "  %-50s ${GREEN}%12s${RESET}\n" "$short_model" "$spend_fmt"
-  done <<< "$MODEL_SPEND"
-else
-  echo -e "  ${DIM}모델별 비용 데이터 없음${RESET}"
-fi
+GLOBAL_MODELS=$(litellm_get "/global/spend/models?limit=20")
+
+echo "$GLOBAL_MODELS" | python3 -c "
+import sys, json
+
+data = json.load(sys.stdin)
+if not data or not isinstance(data, list):
+    print('  데이터 없음')
+    sys.exit(0)
+
+def fmt_cost(v):
+    if v >= 1: return f'\${v:,.2f}'
+    elif v >= 0.01: return f'\${v:.4f}'
+    elif v > 0: return f'\${v:.6f}'
+    return '\$0.00'
+
+def fmt_tokens(v):
+    if v >= 1_000_000: return f'{v/1_000_000:.1f}M'
+    elif v >= 1_000: return f'{v/1_000:.1f}K'
+    return str(v)
+
+print()
+print(f'  \033[2m{\"모델\":<40s} {\"비용\":>12s} {\"토큰\":>12s}\033[0m')
+print(f'  ' + '─' * 70)
+for item in data:
+    model = item.get('model', '') or ''
+    if not model:
+        continue
+    short = model.replace('global.anthropic.', '').replace('bedrock/', '')
+    spend = item.get('total_spend', 0) or 0
+    tokens = item.get('total_tokens', 0) or 0
+    print(f'  {short:<40s} \033[32m{fmt_cost(spend):>12s}\033[0m {fmt_tokens(tokens):>12s}')
+" 2>/dev/null || echo -e "  ${DIM}모델별 비용 데이터를 가져올 수 없습니다${RESET}"
 
 # ─── 4. 일별 활동 ─────────────────────────────────────────────────────────────
 print_section "일별 활동 (Daily Activity: ${START_DATE} ~ ${END_DATE})"
@@ -387,7 +399,9 @@ print(f'  \033[2m{\"모델\":<45s} {\"총 요청\":>10s} {\"총 토큰\":>12s}\0
 print(f'  ' + '─' * 70)
 
 for item in sorted(data, key=lambda x: x.get('sum_total_tokens', 0), reverse=True):
-    model = item.get('model', 'unknown')
+    model = item.get('model', '') or ''
+    if not model.strip():
+        continue
     short_model = model.replace('global.anthropic.', '').replace('bedrock/', '')
     reqs = item.get('sum_api_requests', 0)
     tokens = item.get('sum_total_tokens', 0)
@@ -404,19 +418,45 @@ import sys, json
 
 data = json.load(sys.stdin)
 
-if not data or isinstance(data, dict) and 'error' in data:
+if not data:
     print('  데이터 없음')
     sys.exit(0)
 
-if isinstance(data, dict):
+# 응답이 리스트일 경우 (키/모델별 집계)
+if isinstance(data, list):
+    total_rows = sum(r.get('total_rows', 0) for r in data)
+    total_hits = sum(r.get('cache_hit_true_rows', 0) for r in data)
+    hit_rate = (total_hits / total_rows * 100) if total_rows > 0 else 0
+
+    print()
+    print(f'  \033[1m\033[97m캐시 요약\033[0m')
+    print(f'  ┌──────────────────┬──────────────────┬──────────────────┐')
+    print(f'  │ \033[36m캐시 히트\033[0m         │ \033[36m총 요청\033[0m           │ \033[36m캐시 히트율\033[0m       │')
+    print(f'  │ \033[1m\033[32m{total_hits:<17,d}\033[0m│ \033[1m{total_rows:<17,d}\033[0m│ \033[1m\033[33m{hit_rate:.1f}%\033[0m            │')
+    print(f'  └──────────────────┴──────────────────┴──────────────────┘')
+
+    print()
+    print(f'  \033[2m{\"키\":<20s} {\"모델\":<25s} {\"총 요청\":>8s} {\"캐시히트\":>8s} {\"캐시토큰\":>10s} {\"생성토큰\":>10s}\033[0m')
+    print(f'  ' + '─' * 85)
+    for row in sorted(data, key=lambda x: x.get('cache_hit_true_rows', 0), reverse=True):
+        key = str(row.get('api_key', ''))[:18]
+        model = str(row.get('model', '')).replace('global.anthropic.', '').replace('bedrock/', '')[:23]
+        total = row.get('total_rows', 0) or 0
+        hits = row.get('cache_hit_true_rows', 0) or 0
+        cached_t = row.get('cached_completion_tokens', 0) or 0
+        gen_t = row.get('generated_completion_tokens', 0) or 0
+        if not model.strip():
+            continue
+        print(f'  {key:<20s} {model:<25s} {total:>8,d} {hits:>8,d} {cached_t:>10,d} {gen_t:>10,d}')
+
+elif isinstance(data, dict):
+    if 'error' in data:
+        print('  ' + data.get('error',''))
+        sys.exit(0)
     daily = data.get('daily_data', [])
     sum_hits = data.get('sum_cache_hits', 0)
     sum_calls = data.get('sum_llm_api_calls', 0)
-
-    if sum_calls > 0:
-        hit_rate = sum_hits / sum_calls * 100
-    else:
-        hit_rate = 0
+    hit_rate = (sum_hits / sum_calls * 100) if sum_calls > 0 else 0
 
     print()
     print(f'  \033[1m\033[97m캐시 요약\033[0m')
@@ -424,23 +464,8 @@ if isinstance(data, dict):
     print(f'  │ \033[36m캐시 히트\033[0m         │ \033[36mLLM API 호출\033[0m     │ \033[36m캐시 히트율\033[0m       │')
     print(f'  │ \033[1m\033[32m{sum_hits:<17,d}\033[0m│ \033[1m{sum_calls:<17,d}\033[0m│ \033[1m\033[33m{hit_rate:.1f}%\033[0m            │')
     print(f'  └──────────────────┴──────────────────┴──────────────────┘')
-
-    if daily:
-        print()
-        print(f'  \033[2m{\"키/모델\":<35s} {\"총 요청\":>8s} {\"캐시히트\":>8s} {\"캐시토큰\":>10s} {\"생성토큰\":>10s}\033[0m')
-        print(f'  ' + '─' * 76)
-        for row in daily:
-            key = str(row.get('api_key', ''))[:33]
-            model = str(row.get('model', ''))[:33].replace('global.anthropic.', '').replace('bedrock/', '')
-            label = f'{key}/{model}' if model else key
-            label = label[:33]
-            total = row.get('total_rows', 0)
-            hits = row.get('cache_hit_true_rows', 0)
-            cached_t = row.get('cached_completion_tokens', 0)
-            gen_t = row.get('generated_completion_tokens', 0)
-            print(f'  {label:<35s} {total:>8,d} {hits:>8,d} {cached_t:>10,d} {gen_t:>10,d}')
 else:
-    print('  데이터 형식 불일치')
+    print('  데이터 없음')
 " 2>/dev/null || echo -e "  ${DIM}캐시 히트 데이터를 가져올 수 없습니다${RESET}"
 
 # ─── 7. 상세 로그 (옵션) ──────────────────────────────────────────────────────
