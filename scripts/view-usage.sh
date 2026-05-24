@@ -104,8 +104,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ─── 날짜 계산 ─────────────────────────────────────────────────────────────────
+USER_SPECIFIED_RANGE=false
 if $THIS_MONTH; then
   START_DATE=$(date -u +"%Y-%m-01")
+  USER_SPECIFIED_RANGE=true
+elif [[ "$DAYS" != "30" ]]; then
+  START_DATE=$(date -u -d "$DAYS days ago" +"%Y-%m-%d" 2>/dev/null || date -u -v-${DAYS}d +"%Y-%m-%d")
+  USER_SPECIFIED_RANGE=true
 else
   START_DATE=$(date -u -d "$DAYS days ago" +"%Y-%m-%d" 2>/dev/null || date -u -v-${DAYS}d +"%Y-%m-%d")
 fi
@@ -216,10 +221,32 @@ BUDGET_RESET=$(echo "$USER_INFO" | python3 -c "import sys,json; d=json.load(sys.
 KEY_SPEND=$(echo "$KEY_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('spend',0))" 2>/dev/null)
 KEY_ALIAS=$(echo "$KEY_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('key_alias','N/A'))" 2>/dev/null)
 
-# ─── 일별 데이터 먼저 조회 (비용 요약에서도 사용) ─────────────────────────────
-# 최근 30일 전체를 가져와서 7일/30일/리셋 이후 집계에 활용
-DAILY_30D_START=$(date -u -d "30 days ago" +"%Y-%m-%d" 2>/dev/null || date -u -v-30d +"%Y-%m-%d")
-DAILY=$(litellm_get "/user/daily/activity?start_date=${DAILY_30D_START}&end_date=${END_DATE}&page_size=100")
+# ─── 현재 기간 시작일 계산 & START_DATE 보정 ──────────────────────────────────
+PERIOD_START=$(python3 -c "
+from datetime import datetime, timedelta
+import re
+reset = '${BUDGET_RESET}'
+duration = '${BUDGET_DURATION}'
+if reset and reset != 'N/A' and duration and duration != 'N/A':
+    reset_dt = datetime.strptime(reset, '%Y-%m-%d')
+    m = re.match(r'(\d+)d', duration)
+    if m:
+        days = int(m.group(1))
+        start = reset_dt - timedelta(days=days)
+        print(start.strftime('%Y-%m-%d'))
+    else:
+        print('')
+else:
+    print('')
+" 2>/dev/null) || true
+
+if [[ -n "$PERIOD_START" && "$USER_SPECIFIED_RANGE" == "false" ]]; then
+  START_DATE="$PERIOD_START"
+fi
+
+# ─── 일별 데이터 조회 ────────────────────────────────────────────────────────
+DAILY_FETCH_START="$START_DATE"
+DAILY=$(litellm_get "/user/daily/activity?start_date=${DAILY_FETCH_START}&end_date=${END_DATE}&page_size=100")
 
 # 비용 요약 계산 (python으로 한 번에)
 COST_SUMMARY=$(echo "$DAILY" | python3 -c "
@@ -231,29 +258,24 @@ results = data.get('results', [])
 
 today = datetime.strptime('${END_DATE}', '%Y-%m-%d')
 seven_ago = (today - timedelta(days=7)).strftime('%Y-%m-%d')
-thirty_ago = (today - timedelta(days=30)).strftime('%Y-%m-%d')
-budget_reset = '${BUDGET_RESET}'
+period_start = '${PERIOD_START}' or '${START_DATE}'
 
 spend_7d = 0
-spend_30d = 0
-spend_since_reset = 0
+spend_period = 0
 
 for row in results:
     date_str = str(row.get('date',''))[:10]
     spend = (row.get('metrics') or {}).get('spend', 0) or 0
     if date_str >= seven_ago:
         spend_7d += spend
-    if date_str >= thirty_ago:
-        spend_30d += spend
-    if budget_reset and budget_reset != 'N/A' and date_str >= budget_reset:
-        spend_since_reset += spend
+    if date_str >= period_start:
+        spend_period += spend
 
-print(f'{spend_7d}|{spend_30d}|{spend_since_reset}')
+print(f'{spend_7d}|{spend_period}')
 " 2>/dev/null) || true
 
 SPEND_7D=$(echo "$COST_SUMMARY" | cut -d'|' -f1)
-SPEND_30D=$(echo "$COST_SUMMARY" | cut -d'|' -f2)
-SPEND_SINCE_RESET=$(echo "$COST_SUMMARY" | cut -d'|' -f3)
+SPEND_PERIOD=$(echo "$COST_SUMMARY" | cut -d'|' -f2)
 
 # ─── 헤더 출력 ────────────────────────────────────────────────────────────────
 print_header "Claude Code Usage Dashboard"
@@ -265,7 +287,7 @@ echo -e "  ${DIM}사용자:${RESET} ${BOLD}${WHITE}${USER_ID}${RESET}    ${DIM}�
 print_section "비용 요약 (Cost Summary)"
 
 SPEND_7D_FMT=$(format_cost "${SPEND_7D:-0}")
-SPEND_30D_FMT=$(format_cost "${SPEND_30D:-0}")
+SPEND_PERIOD_FMT=$(format_cost "${SPEND_PERIOD:-0}")
 # 현재 기간 사용량: LiteLLM이 관리하는 user spend (리셋 시 자동 초기화)
 SPEND_CURRENT_FMT=$(format_cost "${USER_SPEND:-0}")
 
@@ -308,11 +330,16 @@ fi
 
 echo ""
 printf "  ┌────────────────────────┬────────────────────────┐\n"
-printf "  │ ${CYAN}최근 7일${RESET}  ${BOLD}${WHITE}%-12s${RESET} │ ${CYAN}최근 30일${RESET}  ${BOLD}${WHITE}%-11s${RESET} │\n" "$SPEND_7D_FMT" "$SPEND_30D_FMT"
+printf "  │ ${CYAN}최근 7일${RESET}  ${BOLD}${WHITE}%-12s${RESET} │ ${CYAN}현재 기간${RESET}  ${BOLD}${WHITE}%-11s${RESET} │\n" "$SPEND_7D_FMT" "$SPEND_PERIOD_FMT"
 printf "  └────────────────────────┴────────────────────────┘\n"
 
 # ─── 3. 일별 활동 + 모델별 비용 ────────────────────────────────────────────────
-print_section "사용량 상세 (Usage Details: ${START_DATE} ~ ${END_DATE})"
+if [[ "$USER_SPECIFIED_RANGE" == "false" && -n "$PERIOD_START" ]]; then
+  _DETAIL_TITLE="현재 기간 사용량 상세 (${START_DATE} ~ ${END_DATE})"
+else
+  _DETAIL_TITLE="사용량 상세 (${START_DATE} ~ ${END_DATE})"
+fi
+print_section "$_DETAIL_TITLE"
 
 echo "$DAILY" | python3 -c "
 import sys, json
