@@ -321,22 +321,32 @@ import re
 
 def normalize_model(name):
     name = name.strip()
-    # ARN에서 모델명 추출: ...inference-profile/... 뒤 또는 foundation-model/ 뒤
+    # bedrock/ prefix 제거
+    name = re.sub(r'^bedrock/', '', name)
+    # ARN → 모델명 추출
     if 'arn:aws:bedrock' in name:
-        # application-inference-profile은 실제 모델명을 포함하지 않으므로 패턴 매칭
-        if 'opus-4-7' in name or 'opus-4.7' in name: return 'claude-opus-4-7'
-        if 'opus-4-6' in name or 'opus-4.6' in name: return 'claude-opus-4-6-v1'
-        if 'sonnet-4-6' in name or 'sonnet-4.6' in name: return 'claude-sonnet-4-6'
-        if 'haiku-4-5' in name or 'haiku-4.5' in name: return 'claude-haiku-4-5'
-        # 프로파일 ID만 있는 경우 - 위에서 못 잡으면 그냥 짧게
-        return 'bedrock-profile'
-    # apac/global prefix 제거
+        if 'opus-4-7' in name or 'opus-4.7' in name: return 'Opus 4.7'
+        if 'opus-4-6' in name or 'opus-4.6' in name: return 'Opus 4.6'
+        if 'sonnet-4-6' in name or 'sonnet-4.6' in name: return 'Sonnet 4.6'
+        if 'sonnet-4-5' in name or 'sonnet-4.5' in name: return 'Sonnet 4.5'
+        if 'haiku-4-5' in name or 'haiku-4.5' in name: return 'Haiku 4.5'
+        return 'Bedrock Profile'
+    # global/apac/anthropic prefix 제거
     name = re.sub(r'^(global|apac)\.anthropic\.', '', name)
     name = re.sub(r'^anthropic\.', '', name)
-    # 버전 suffix 정규화
+    # claude- prefix 유지하되 정규화
+    # 버전 suffix 제거 (-20251001-v1:0 등)
     name = re.sub(r'-20\d{6}(-v\d+)?(:\d+)?$', '', name)
     name = re.sub(r'-v\d+(:\d+)?$', '', name)
-    return name
+    # 읽기 좋게 변환
+    model_map = {
+        'claude-opus-4-7': 'Opus 4.7',
+        'claude-opus-4-6': 'Opus 4.6',
+        'claude-sonnet-4-6': 'Sonnet 4.6',
+        'claude-sonnet-4-5': 'Sonnet 4.5',
+        'claude-haiku-4-5': 'Haiku 4.5',
+    }
+    return model_map.get(name, name)
 
 model_totals = {}
 for row in results:
