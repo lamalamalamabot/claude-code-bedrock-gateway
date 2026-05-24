@@ -288,14 +288,12 @@ print_section "비용 요약 (Cost Summary)"
 
 SPEND_7D_FMT=$(format_cost "${SPEND_7D:-0}")
 SPEND_PERIOD_FMT=$(format_cost "${SPEND_PERIOD:-0}")
-# 현재 기간 사용량: LiteLLM이 관리하는 user spend (리셋 시 자동 초기화)
-SPEND_CURRENT_FMT=$(format_cost "${USER_SPEND:-0}")
 
 echo ""
 if [[ "$USER_BUDGET" != "unlimited" && "$USER_BUDGET" != "None" && "$USER_BUDGET" != "null" ]]; then
   BUDGET_FORMATTED=$(format_cost "$USER_BUDGET")
   PCT=$(python3 -c "
-s=${USER_SPEND:-0}
+s=${SPEND_PERIOD:-0}
 b=${USER_BUDGET}
 print(f'{s/b*100:.1f}' if b > 0 else '0')
 " 2>/dev/null || echo "0")
@@ -309,7 +307,7 @@ print(f'{s/b*100:.1f}' if b > 0 else '0')
   elif python3 -c "exit(0 if $PCT > 70 else 1)" 2>/dev/null; then BAR_COLOR=$YELLOW
   else BAR_COLOR=$GREEN; fi
 
-  printf "  ${DIM}현재 기간 사용량:${RESET} ${BOLD}${WHITE}%-12s${RESET}" "$SPEND_CURRENT_FMT"
+  printf "  ${DIM}현재 기간 사용량:${RESET} ${BOLD}${WHITE}%-12s${RESET}" "$SPEND_PERIOD_FMT"
   printf "  ${DIM}예산:${RESET} %-12s" "$BUDGET_FORMATTED"
   printf "  ${DIM}리셋:${RESET} %s (%s)\n" "$BUDGET_RESET" "$BUDGET_DURATION"
   echo ""
@@ -320,7 +318,7 @@ print(f'{s/b*100:.1f}' if b > 0 else '0')
   printf '░%.0s' $(seq 1 $EMPTY) 2>/dev/null
   printf "${RESET}  ${BAR_COLOR}${PCT}%%${RESET}\n"
 else
-  printf "  ${DIM}현재 기간 사용량:${RESET} ${BOLD}${WHITE}%-12s${RESET}" "$SPEND_CURRENT_FMT"
+  printf "  ${DIM}현재 기간 사용량:${RESET} ${BOLD}${WHITE}%-12s${RESET}" "$SPEND_PERIOD_FMT"
   printf "  ${DIM}예산:${RESET} unlimited"
   if [[ "$BUDGET_RESET" != "N/A" ]]; then
     printf "  ${DIM}리셋:${RESET} %s (%s)" "$BUDGET_RESET" "$BUDGET_DURATION"
