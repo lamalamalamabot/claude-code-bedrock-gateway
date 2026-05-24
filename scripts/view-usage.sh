@@ -18,10 +18,9 @@ DAYS=30
 SHOW_DETAIL=false
 THIS_MONTH=false
 
-# Claude Code settings.json에서 GATEWAY_URL 자동 추출
+# Claude Code settings.json에서 GATEWAY_URL, apiKeyHelper 경로 자동 추출
 _auto_detect_settings() {
   local settings_file=""
-  # 가능한 settings.json 경로들
   for f in \
     "$HOME/.claude/settings.json" \
     "$HOME/.claude/settings.local.json" \
@@ -33,50 +32,39 @@ _auto_detect_settings() {
   done
 
   if [[ -z "$settings_file" ]]; then
-    return
+    return 0
   fi
 
   # GATEWAY_URL: ANTHROPIC_BEDROCK_BASE_URL에서 /bedrock 제거
   if [[ -z "${GATEWAY_URL:-}" ]]; then
     GATEWAY_URL=$(python3 -c "
-import json, sys
+import json
 try:
     with open('$settings_file') as f: d = json.load(f)
     url = d.get('env',{}).get('ANTHROPIC_BEDROCK_BASE_URL','')
     print(url.replace('/bedrock','').rstrip('/'))
-except: pass
-" 2>/dev/null)
+except: print('')
+" 2>/dev/null) || true
   fi
 
-  # TOKEN_SERVICE_URL: apiKeyHelper 스크립트에서 추출
-  if [[ -z "${TOKEN_SERVICE_URL:-}" ]]; then
-    local helper
-    helper=$(python3 -c "
+  # apiKeyHelper 경로 (VK를 가져올 때 이 스크립트를 직접 실행)
+  if [[ -z "${API_KEY_HELPER:-}" ]]; then
+    API_KEY_HELPER=$(python3 -c "
 import json
 try:
     with open('$settings_file') as f: d = json.load(f)
     print(d.get('apiKeyHelper',''))
-except: pass
-" 2>/dev/null)
-    if [[ -n "$helper" && -f "$helper" ]]; then
-      TOKEN_SERVICE_URL=$(grep -oP 'https://[a-z0-9]+\.execute-api\.[a-z0-9-]+\.amazonaws\.com/[^\s"'\'']+' "$helper" 2>/dev/null | head -1)
-    fi
+except: print('')
+" 2>/dev/null) || true
   fi
 
-  # 동일 디렉토리의 get-gateway-token.sh에서도 시도
-  if [[ -z "${TOKEN_SERVICE_URL:-}" ]]; then
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [[ -f "$script_dir/get-gateway-token.sh" ]]; then
-      TOKEN_SERVICE_URL=$(grep -oP 'https://[a-z0-9]+\.execute-api\.[a-z0-9-]+\.amazonaws\.com/[^\s"'\'']+' "$script_dir/get-gateway-token.sh" 2>/dev/null | head -1)
-    fi
-  fi
+  return 0
 }
 
 _auto_detect_settings
 
 GATEWAY_URL="${GATEWAY_URL:-}"
-TOKEN_SERVICE_URL="${TOKEN_SERVICE_URL:-}"
+API_KEY_HELPER="${API_KEY_HELPER:-}"
 
 # ─── 색상 정의 ─────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -125,32 +113,37 @@ END_DATE=$(date -u +"%Y-%m-%d")
 
 # ─── VK 가져오기 ──────────────────────────────────────────────────────────────
 get_virtual_key() {
-  if [[ -z "$TOKEN_SERVICE_URL" ]]; then
-    echo -e "${RED}ERROR: TOKEN_SERVICE_URL 환경변수를 설정하세요${RESET}" >&2
-    exit 1
+  # 1순위: apiKeyHelper 스크립트 직접 실행 (Claude Code와 동일한 방식)
+  if [[ -n "$API_KEY_HELPER" && -x "$API_KEY_HELPER" ]]; then
+    local token
+    token=$("$API_KEY_HELPER" 2>/dev/null) || {
+      echo -e "${RED}ERROR: apiKeyHelper 실행 실패. aws sso login 을 확인하세요${RESET}" >&2
+      exit 1
+    }
+    if [[ -n "$token" ]]; then
+      echo "$token"
+      return 0
+    fi
   fi
 
-  eval $(aws configure export-credentials --format env 2>/dev/null) || {
-    echo -e "${RED}ERROR: aws sso login 을 실행하세요${RESET}" >&2
-    exit 1
-  }
-
-  local response
-  response=$(curl -s -X POST "$TOKEN_SERVICE_URL" \
-    --aws-sigv4 "aws:amz:${AWS_REGION}:execute-api" \
-    --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
-    -H "x-amz-security-token: ${AWS_SESSION_TOKEN:-}" \
-    -H "Content-Type: application/json" \
-    -d '{}' 2>/dev/null)
-
-  local token
-  token=$(echo "$response" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null)
-
-  if [[ -z "$token" ]]; then
-    echo -e "${RED}ERROR: Virtual Key를 가져올 수 없습니다${RESET}" >&2
-    exit 1
+  # 2순위: 같은 디렉토리의 get-gateway-token.sh
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -x "$script_dir/get-gateway-token.sh" ]]; then
+    local token
+    token=$("$script_dir/get-gateway-token.sh" 2>/dev/null) || {
+      echo -e "${RED}ERROR: get-gateway-token.sh 실행 실패. aws sso login 을 확인하세요${RESET}" >&2
+      exit 1
+    }
+    if [[ -n "$token" ]]; then
+      echo "$token"
+      return 0
+    fi
   fi
-  echo "$token"
+
+  echo -e "${RED}ERROR: Virtual Key를 가져올 수 없습니다.${RESET}" >&2
+  echo -e "${RED}  apiKeyHelper 또는 get-gateway-token.sh를 확인하세요.${RESET}" >&2
+  exit 1
 }
 
 # ─── LiteLLM API 호출 헬퍼 ────────────────────────────────────────────────────
