@@ -263,7 +263,6 @@ printf "  ${DIM}현재 키 사용량:${RESET} %s\n" "$KEY_SPEND_FORMATTED"
 # ─── 3. 일별 활동 + 모델별 비용 ────────────────────────────────────────────────
 print_section "사용량 상세 (Usage Details: ${START_DATE} ~ ${END_DATE})"
 
-echo -e "${DIM}  데이터 조회 중...${RESET}"
 DAILY=$(litellm_get "/user/daily/activity?start_date=${START_DATE}&end_date=${END_DATE}&page_size=100")
 
 echo "$DAILY" | python3 -c "
