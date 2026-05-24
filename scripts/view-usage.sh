@@ -12,13 +12,71 @@
 
 set -euo pipefail
 
-# ─── 설정 ─────────────────────────────────────────────────────────────────────
-GATEWAY_URL="${GATEWAY_URL:-}"
-TOKEN_SERVICE_URL="${TOKEN_SERVICE_URL:-}"
+# ─── 설정 자동 감지 ───────────────────────────────────────────────────────────
 AWS_REGION="${AWS_REGION:-ap-northeast-2}"
 DAYS=30
 SHOW_DETAIL=false
 THIS_MONTH=false
+
+# Claude Code settings.json에서 GATEWAY_URL 자동 추출
+_auto_detect_settings() {
+  local settings_file=""
+  # 가능한 settings.json 경로들
+  for f in \
+    "$HOME/.claude/settings.json" \
+    "$HOME/.claude/settings.local.json" \
+    "$HOME/.config/claude-code/settings.json"; do
+    if [[ -f "$f" ]]; then
+      settings_file="$f"
+      break
+    fi
+  done
+
+  if [[ -z "$settings_file" ]]; then
+    return
+  fi
+
+  # GATEWAY_URL: ANTHROPIC_BEDROCK_BASE_URL에서 /bedrock 제거
+  if [[ -z "${GATEWAY_URL:-}" ]]; then
+    GATEWAY_URL=$(python3 -c "
+import json, sys
+try:
+    with open('$settings_file') as f: d = json.load(f)
+    url = d.get('env',{}).get('ANTHROPIC_BEDROCK_BASE_URL','')
+    print(url.replace('/bedrock','').rstrip('/'))
+except: pass
+" 2>/dev/null)
+  fi
+
+  # TOKEN_SERVICE_URL: apiKeyHelper 스크립트에서 추출
+  if [[ -z "${TOKEN_SERVICE_URL:-}" ]]; then
+    local helper
+    helper=$(python3 -c "
+import json
+try:
+    with open('$settings_file') as f: d = json.load(f)
+    print(d.get('apiKeyHelper',''))
+except: pass
+" 2>/dev/null)
+    if [[ -n "$helper" && -f "$helper" ]]; then
+      TOKEN_SERVICE_URL=$(grep -oP 'https://[a-z0-9]+\.execute-api\.[a-z0-9-]+\.amazonaws\.com/[^\s"'\'']+' "$helper" 2>/dev/null | head -1)
+    fi
+  fi
+
+  # 동일 디렉토리의 get-gateway-token.sh에서도 시도
+  if [[ -z "${TOKEN_SERVICE_URL:-}" ]]; then
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "$script_dir/get-gateway-token.sh" ]]; then
+      TOKEN_SERVICE_URL=$(grep -oP 'https://[a-z0-9]+\.execute-api\.[a-z0-9-]+\.amazonaws\.com/[^\s"'\'']+' "$script_dir/get-gateway-token.sh" 2>/dev/null | head -1)
+    fi
+  fi
+}
+
+_auto_detect_settings
+
+GATEWAY_URL="${GATEWAY_URL:-}"
+TOKEN_SERVICE_URL="${TOKEN_SERVICE_URL:-}"
 
 # ─── 색상 정의 ─────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
