@@ -149,7 +149,7 @@ get_virtual_key() {
 # ─── LiteLLM API 호출 헬퍼 ────────────────────────────────────────────────────
 litellm_get() {
   local path="$1"
-  curl -s -H "Authorization: Bearer $VK" "${GATEWAY_URL}${path}"
+  curl -s -k -H "Authorization: Bearer $VK" "${GATEWAY_URL}${path}"
 }
 
 # ─── 포맷팅 헬퍼 ──────────────────────────────────────────────────────────────
