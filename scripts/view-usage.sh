@@ -316,7 +316,28 @@ cache_save = (total_cache_read / total_prompt * 100) if total_prompt > 0 else 0
 print(f'  │ \033[1m{fmt_tokens(total_cache_read):<17s}\033[0m│ \033[1m{fmt_tokens(total_cache_create):<17s}\033[0m│ \033[1m\033[33m{cache_save:.1f}%\033[0m            │')
 print(f'  └──────────────────┴──────────────────┴──────────────────┘')
 
-# 모델별 비용 (breakdown에서 추출)
+# 모델별 비용 (breakdown에서 추출, 정규화하여 합산)
+import re
+
+def normalize_model(name):
+    name = name.strip()
+    # ARN에서 모델명 추출: ...inference-profile/... 뒤 또는 foundation-model/ 뒤
+    if 'arn:aws:bedrock' in name:
+        # application-inference-profile은 실제 모델명을 포함하지 않으므로 패턴 매칭
+        if 'opus-4-7' in name or 'opus-4.7' in name: return 'claude-opus-4-7'
+        if 'opus-4-6' in name or 'opus-4.6' in name: return 'claude-opus-4-6-v1'
+        if 'sonnet-4-6' in name or 'sonnet-4.6' in name: return 'claude-sonnet-4-6'
+        if 'haiku-4-5' in name or 'haiku-4.5' in name: return 'claude-haiku-4-5'
+        # 프로파일 ID만 있는 경우 - 위에서 못 잡으면 그냥 짧게
+        return 'bedrock-profile'
+    # apac/global prefix 제거
+    name = re.sub(r'^(global|apac)\.anthropic\.', '', name)
+    name = re.sub(r'^anthropic\.', '', name)
+    # 버전 suffix 정규화
+    name = re.sub(r'-20\d{6}(-v\d+)?(:\d+)?$', '', name)
+    name = re.sub(r'-v\d+(:\d+)?$', '', name)
+    return name
+
 model_totals = {}
 for row in results:
     breakdown = row.get('breakdown', {})
@@ -324,14 +345,15 @@ for row in results:
     for model_name, model_data in models.items():
         if not model_name.strip():
             continue
+        norm = normalize_model(model_name)
         m = model_data.get('metrics', {})
-        if model_name not in model_totals:
-            model_totals[model_name] = {'spend': 0, 'prompt_tokens': 0, 'completion_tokens': 0, 'requests': 0, 'cache_read': 0}
-        model_totals[model_name]['spend'] += m.get('spend', 0) or 0
-        model_totals[model_name]['prompt_tokens'] += m.get('prompt_tokens', 0) or 0
-        model_totals[model_name]['completion_tokens'] += m.get('completion_tokens', 0) or 0
-        model_totals[model_name]['requests'] += m.get('api_requests', 0) or 0
-        model_totals[model_name]['cache_read'] += m.get('cache_read_input_tokens', 0) or 0
+        if norm not in model_totals:
+            model_totals[norm] = {'spend': 0, 'prompt_tokens': 0, 'completion_tokens': 0, 'requests': 0, 'cache_read': 0}
+        model_totals[norm]['spend'] += m.get('spend', 0) or 0
+        model_totals[norm]['prompt_tokens'] += m.get('prompt_tokens', 0) or 0
+        model_totals[norm]['completion_tokens'] += m.get('completion_tokens', 0) or 0
+        model_totals[norm]['requests'] += m.get('api_requests', 0) or 0
+        model_totals[norm]['cache_read'] += m.get('cache_read_input_tokens', 0) or 0
 
 if model_totals:
     print()
@@ -339,11 +361,10 @@ if model_totals:
     print(f'  \033[2m{\"모델\":<35s} {\"비용\":>10s} {\"요청\":>7s} {\"입력토큰\":>10s} {\"출력토큰\":>10s} {\"캐시읽기\":>10s}\033[0m')
     print(f'  ' + '─' * 88)
     for model_name, totals in sorted(model_totals.items(), key=lambda x: -x[1]['spend']):
-        short = model_name.replace('global.anthropic.', '').replace('bedrock/', '')[:33]
         spend = totals['spend']
         if spend > 1: color = '\033[33m'
         else: color = '\033[32m'
-        print(f'  {short:<35s} {color}{fmt_cost(spend):>10s}\033[0m {totals[\"requests\"]:>7,d} {fmt_tokens(totals[\"prompt_tokens\"]):>10s} {fmt_tokens(totals[\"completion_tokens\"]):>10s} {fmt_tokens(totals[\"cache_read\"]):>10s}')
+        print(f'  {model_name:<35s} {color}{fmt_cost(spend):>10s}\033[0m {totals[\"requests\"]:>7,d} {fmt_tokens(totals[\"prompt_tokens\"]):>10s} {fmt_tokens(totals[\"completion_tokens\"]):>10s} {fmt_tokens(totals[\"cache_read\"]):>10s}')
 
 # 일별 테이블
 print()
