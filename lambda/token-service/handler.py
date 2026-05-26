@@ -331,6 +331,8 @@ def _create_virtual_key(master_key: str, username: str, account: str, user_arn: 
         "key_alias": f"sso-{username}",
         "user_id": username,
         "team_id": team_id,
+        "max_budget": 100.0,
+        "budget_duration": "30d",
         "metadata": {
             "sso_arn": user_arn,
             "account": account,
