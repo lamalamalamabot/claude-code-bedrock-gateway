@@ -1,35 +1,49 @@
 # Claude Code on Bedrock — Enterprise Gateway
 
-Claude Code on Amazon Bedrock을 엔터프라이즈 환경에서 안전하게 운영하기 위한 구현 가이드 및 샘플 코드입니다. SSO 인증, LLM Gateway, 팀 기반 관리, 사용자별 예산 관리, 사용량 모니터링까지 엔드투엔드 인프라를 CDK로 구현합니다.
+Claude Code on Amazon Bedrock을 엔터프라이즈 환경에서 안전하게 운영하기 위한 구현 가이드 및 샘플 코드입니다. 외부 IdP(Okta) 연동 SSO 인증, LLM Gateway, 팀 기반 관리, 사용자별 예산 관리, 사용량 모니터링, 멀티 계정 로깅까지 엔드투엔드 인프라를 CDK로 구현합니다.
 
 LLM Gateway는 [Claude Code 공식 문서](https://code.claude.com/docs/en/llm-gateway)에서 소개하고 있는 **LiteLLM Proxy**를 기반으로 구현했습니다. LiteLLM의 Bedrock pass-through, Virtual Key 기반 사용자 관리, 예산 추적 기능을 활용하며, 오픈소스 범위에서 제공되지 않는 SSO 연동은 IAM Identity Center + 커스텀 Token Service로 구현했습니다.
 
-개발자가 `aws sso login` 한번으로 인증하면, Token Service가 SSO 자격증명을 검증하고 **IAM Identity Center 그룹을 자동 조회하여 LiteLLM 팀에 매핑**한 뒤 Virtual Key를 자동 생성/반환합니다. Claude Code는 이 Virtual Key로 LLM Gateway를 통해 Amazon Bedrock의 Claude 모델을 호출합니다.
+개발자가 `aws sso login` 한번으로 Okta를 통해 인증하면, Token Service가 SSO 자격증명을 검증하고 **IAM Identity Center 그룹을 자동 조회하여 LiteLLM 팀에 매핑**한 뒤 Virtual Key를 자동 생성/반환합니다. Claude Code는 이 Virtual Key로 LLM Gateway를 통해 Amazon Bedrock의 Claude 모델을 호출합니다. 인프라는 Payer/ClaudeCode/Logging의 **멀티 계정 구조**로 구성됩니다.
 
 ## 주요 기능
 
+- **외부 IdP(Okta) 연동**: Okta를 통한 SSO 인증 → IAM Identity Center 연동
 - **SSO 인증 자동화**: `aws sso login` 한번으로 Virtual Key 자동 발급 (관리자 개입 불필요)
 - **팀 자동 매핑**: IAM Identity Center 그룹 → LiteLLM 팀 자동 연동 (팀별 예산/사용량 관리)
 - **Virtual Key 캐싱**: DynamoDB 기반 캐시로 반복 인증 시 빠른 응답
 - **팀별 예산 관리**: LiteLLM의 팀/사용자별 예산 설정 및 초과 차단
 - **Application Inference Profile**: CDK로 자동 생성되는 Application Inference Profile을 통한 추론 (태깅 기반 비용 추적, CloudWatch 메트릭 분리)
+- **멀티 계정 구조**: Payer(조직 관리) / ClaudeCode(워크로드) / Logging(감사 로그) 계정 분리
 - **모니터링**: CloudWatch Dashboard, CPU/5xx 알람, SNS 알림
-- **감사 로그**: DynamoDB 기반 사용자별 API 호출 기록
+- **감사 로그**: S3(Logging Account) 기반 중앙 집중 로그 저장
 
 ## 아키텍처
 
-![High Level Architecture](docs/high-level-architecture.png)
+![Architecture](docs/ClaudeCodeOnBedrock_Architecture.png)
 
 | # | 단계 | 설명 |
 |---|------|------|
-| 1 | SSO Login | 개발자가 `aws sso login`으로 IAM Identity Center 인증 |
-| 2 | SigV4 서명 요청 | apiKeyHelper가 SSO 자격증명으로 Token Service(API Gateway) 호출 |
-| 3 | 팀 자동 매핑 | Token Service가 IAM Identity Center에서 사용자 그룹 조회 → LiteLLM 팀 매핑 |
-| 4 | Virtual Key 캐시 조회 | DynamoDB에서 사용자의 Virtual Key 조회 (캐시 히트 시 즉시 반환) |
-| 5 | Virtual Key 생성 | 캐시 미스 시 LiteLLM 팀 자동 생성 + `/key/generate`로 Virtual Key 발급 |
-| 6 | Virtual Key 인증 | Claude Code가 Virtual Key로 ALB → LiteLLM Gateway 접근 |
-| 7 | Bedrock InvokeModel | LiteLLM이 VPC Endpoint를 통해 Amazon Bedrock 호출 |
-| 8 | 팀/사용자 관리 | LiteLLM이 Aurora PostgreSQL에서 팀별/사용자별 사용량 및 예산 추적 |
+| 1 | Okta 인증 | 개발자가 `aws sso login` → Okta(외부 IdP)를 통해 IAM Identity Center 인증 |
+| 2 | Virtual Key 생성/조회 | apiKeyHelper가 SSO 자격증명으로 API Gateway → Lambda(Token Service) 호출, DynamoDB 캐시 조회/생성 |
+| 3 | Virtual Key 이용하여 호출 | Claude Code가 Virtual Key를 Bearer Token으로 ALB → LiteLLM Gateway(ECS Fargate) 접근 |
+| 4 | Log 저장 | 사용량 로그를 별도 Logging Account의 S3에 저장 |
+
+### 멀티 계정 구조
+
+| 계정 | 역할 |
+|------|------|
+| Payer Account | AWS Organization 관리, IAM Identity Center, Okta 연동 |
+| ClaudeCode Account | LLM Gateway 인프라 (ALB, ECS, Lambda, Aurora, DynamoDB, Bedrock VPC Endpoint) |
+| Logging Account | 감사 로그 중앙 저장 (S3) |
+
+### 네트워크 구성 (ClaudeCode Account)
+
+| 서브넷 | 구성요소 |
+|--------|----------|
+| Public Subnet | ALB (HTTPS 443) |
+| Private Subnet | API Gateway, Lambda(Token Service), LiteLLM(ECS Fargate), VPC Endpoints(Bedrock) |
+| Isolated Subnet | Aurora PostgreSQL (LiteLLM 메타데이터/예산 관리) |
 
 ## 인증 흐름 (상세)
 
@@ -37,7 +51,7 @@ LLM Gateway는 [Claude Code 공식 문서](https://code.claude.com/docs/en/llm-g
 개발자 터미널
   │
   ├─ aws sso login
-  │   └─ 브라우저 → IAM Identity Center 로그인 (Username + Password)
+  │   └─ 브라우저 → Okta 로그인 (외부 IdP → IAM Identity Center)
   │   └─ SSO 세션 토큰 발급 → ~/.aws/sso/cache/ 저장
   │
   ├─ claude (Claude Code 실행)
@@ -103,11 +117,12 @@ IAM Identity Center                    LiteLLM
 | Gateway | LiteLLM Proxy (공식 이미지) | `ghcr.io/berriai/litellm:main-latest` |
 | 컴퓨팅 | ECS Fargate (2 vCPU / 4 GB) | Private Subnet, ALB 연동 |
 | 로드밸런서 | ALB (HTTPS) | 자체서명 인증서, TLS 1.3, idle timeout 300s |
-| 인증 | IAM Identity Center + API Gateway IAM Auth | SSO → SigV4 → Virtual Key |
+| 인증 | Okta + IAM Identity Center + API Gateway IAM Auth | 외부 IdP(Okta) → SSO → SigV4 → Virtual Key |
 | 팀 매핑 | IAM Identity Center Groups | Identity Store API로 그룹 자동 조회 → LiteLLM 팀 |
 | Token Service | Lambda (Python 3.12) | Virtual Key 자동 생성, 팀 매핑, DynamoDB 캐싱 |
 | DB (LiteLLM) | Aurora Serverless v2 (PostgreSQL 15.15) | 0.5~4 ACU, Isolated Subnet |
-| DB (감사/설정) | DynamoDB (PAY_PER_REQUEST) | Audit 테이블 + Config 테이블 (Virtual Key 캐시) |
+| DB (감사/설정) | DynamoDB (PAY_PER_REQUEST) | Config 테이블 (Virtual Key 캐시) |
+| 로깅 | S3 (Logging Account) | 멀티 계정 감사 로그 중앙 저장 |
 | 모니터링 | CloudWatch Dashboard + Alarms | ECS/ALB 메트릭, CPU/5xx 알람 |
 | 네트워크 | VPC (2 AZ, NAT GW 1개) | Bedrock VPC Endpoint, S3/DynamoDB Gateway Endpoint |
 | AI 모델 | Amazon Bedrock (Application Inference Profile) | Claude Opus 4.7/4.6, Sonnet 4.6/4.5, Haiku 4.5 |
