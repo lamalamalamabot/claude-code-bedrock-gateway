@@ -44,6 +44,7 @@ export class RootStack extends cdk.Stack {
       dbCluster: database.cluster,
       certificateArn: this.node.tryGetContext('certificateArn') || process.env.CERTIFICATE_ARN || '',
       inferenceProfileArns: {
+        opus48: inferenceProfile.opus48Arn,
         opus47: inferenceProfile.opus47Arn,
         opus46: inferenceProfile.opus46Arn,
         sonnet46: inferenceProfile.sonnet46Arn,

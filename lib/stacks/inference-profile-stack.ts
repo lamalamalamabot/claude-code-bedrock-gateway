@@ -4,6 +4,7 @@ import { Construct } from 'constructs';
 import { PROJECT_NAME, MODELS } from '../config/constants';
 
 export class InferenceProfileStack extends cdk.NestedStack {
+  public readonly opus48Arn: string;
   public readonly opus47Arn: string;
   public readonly opus46Arn: string;
   public readonly sonnet46Arn: string;
@@ -13,6 +14,7 @@ export class InferenceProfileStack extends cdk.NestedStack {
     super(scope, id);
 
     const profileDefs = [
+      { id: 'Opus48', systemProfileId: MODELS.OPUS_4_8, suffix: 'opus-4-8' },
       { id: 'Opus47', systemProfileId: MODELS.OPUS_4_7, suffix: 'opus-4-7' },
       { id: 'Opus46', systemProfileId: MODELS.OPUS_4_6, suffix: 'opus-4-6' },
       { id: 'Sonnet46', systemProfileId: MODELS.SONNET_4_6, suffix: 'sonnet-4-6' },
@@ -34,6 +36,7 @@ export class InferenceProfileStack extends cdk.NestedStack {
       });
     }
 
+    this.opus48Arn = profiles['Opus48'].attrInferenceProfileArn;
     this.opus47Arn = profiles['Opus47'].attrInferenceProfileArn;
     this.opus46Arn = profiles['Opus46'].attrInferenceProfileArn;
     this.sonnet46Arn = profiles['Sonnet46'].attrInferenceProfileArn;
