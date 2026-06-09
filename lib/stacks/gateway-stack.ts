@@ -196,23 +196,40 @@ with open('/tmp/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
 "`,
           `python3 -c "
-import json as _json
-
-def _patch_sign_request():
-    from litellm.llms.bedrock.passthrough.transformation import BedrockPassthroughConfig
-    _orig = BedrockPassthroughConfig.sign_request
-    def _patched(self, headers, litellm_params, request_data, api_base, model=None):
-        call_id = None
-        if isinstance(litellm_params, dict):
-            call_id = litellm_params.get('litellm_call_id')
-        if call_id:
-            headers = headers or {}
-            headers['X-Amzn-Bedrock-Request-Metadata'] = _json.dumps({'litellm_call_id': str(call_id)})
-        return _orig(self, headers, litellm_params, request_data, api_base, model)
-    BedrockPassthroughConfig.sign_request = _patched
-    print('PATCHED: sign_request -> X-Amzn-Bedrock-Request-Metadata injection')
-
-_patch_sign_request()
+import subprocess, glob, os, sys
+NL = chr(10); Q = chr(39)
+TARGET = 'litellm/llms/bedrock/passthrough/transformation.py'
+MARK = '__REQMETA_PATCH__'
+P = [
+    '',
+    '# ' + MARK,
+    'import json as _rm_json',
+    '_RM_ORIG = BedrockPassthroughConfig.sign_request',
+    'def _rm_sign(self, headers, litellm_params, request_data, api_base, model=None):',
+    '    cid = litellm_params.get(' + Q + 'litellm_call_id' + Q + ') if isinstance(litellm_params, dict) else None',
+    '    if cid:',
+    '        headers = dict(headers or {})',
+    '        headers[' + Q + 'X-Amzn-Bedrock-Request-Metadata' + Q + '] = _rm_json.dumps({' + Q + 'litellm_call_id' + Q + ': str(cid)})',
+    '    return _RM_ORIG(self, headers, litellm_params, request_data, api_base, model)',
+    'BedrockPassthroughConfig.sign_request = _rm_sign',
+]
+patch = NL.join(P) + NL
+res = subprocess.run(['find', '/', '-path', '*/' + TARGET, '-type', 'f'], capture_output=True, text=True, timeout=30)
+paths = [p.strip() for p in res.stdout.strip().split(NL) if p.strip()]
+if not paths:
+    print('ERROR: no transformation.py found'); sys.exit(1)
+for path in paths:
+    with open(path) as f:
+        src = f.read()
+    if MARK in src:
+        print('SKIP already patched: ' + path); continue
+    with open(path, 'a') as f:
+        f.write(patch)
+    d = os.path.join(os.path.dirname(path), '__pycache__')
+    if os.path.isdir(d):
+        for pyc in glob.glob(os.path.join(d, '*.pyc')):
+            os.remove(pyc)
+    print('APPENDED requestMetadata patch: ' + path)
 "`,
           `python3 -c "
 import subprocess, glob, os, sys
