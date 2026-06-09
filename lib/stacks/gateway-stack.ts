@@ -196,7 +196,7 @@ with open('/tmp/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
 "`,
           `python3 -c "
-import importlib, types
+import json as _json
 
 def _patch_sign_request():
     from litellm.llms.bedrock.passthrough.transformation import BedrockPassthroughConfig
@@ -207,10 +207,10 @@ def _patch_sign_request():
             call_id = litellm_params.get('litellm_call_id')
         if call_id:
             headers = headers or {}
-            headers['x-amzn-trace-id'] = 'Root=1-00000000-' + str(call_id).replace('-', '')[:24]
+            headers['X-Amzn-Bedrock-Request-Metadata'] = _json.dumps({'litellm_call_id': str(call_id)})
         return _orig(self, headers, litellm_params, request_data, api_base, model)
     BedrockPassthroughConfig.sign_request = _patched
-    print('PATCHED: sign_request -> x-amzn-trace-id injection')
+    print('PATCHED: sign_request -> X-Amzn-Bedrock-Request-Metadata injection')
 
 _patch_sign_request()
 "`,
