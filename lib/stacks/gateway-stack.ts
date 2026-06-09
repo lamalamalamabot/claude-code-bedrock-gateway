@@ -271,6 +271,41 @@ for path in paths:
             os.remove(pyc)
     print('PATCHED: ' + path)
 "`,
+          `python3 -c "
+import subprocess, glob, os, sys
+NL = chr(10); DQ = chr(34)
+TARGET = 'litellm/proxy/spend_tracking/spend_tracking_utils.py'
+MARK = '__LLCALLID_META_PATCH__'
+ANCHOR = 'clean_metadata[' + DQ + 'additional_usage_values' + DQ + '] = additional_usage_values'
+INSERT = 'clean_metadata[' + DQ + 'litellm_call_id' + DQ + '] = kwargs.get(' + DQ + 'litellm_call_id' + DQ + ')  # ' + MARK
+res = subprocess.run(['find', '/', '-path', '*/' + TARGET, '-type', 'f'], capture_output=True, text=True, timeout=30)
+paths = [p.strip() for p in res.stdout.strip().split(NL) if p.strip()]
+if not paths:
+    print('ERROR: no spend_tracking_utils.py found'); sys.exit(1)
+for path in paths:
+    with open(path) as f:
+        lines = f.readlines()
+    if any(MARK in l for l in lines):
+        print('SKIP already patched: ' + path); continue
+    n = sum(1 for l in lines if l.strip() == ANCHOR)
+    if n != 1:
+        print('ERROR: anchor count != 1 (' + str(n) + '): ' + path); sys.exit(1)
+    out = []
+    for l in lines:
+        out.append(l)
+        if l.strip() == ANCHOR:
+            ind = l[:len(l) - len(l.lstrip())]
+            out.append(ind + INSERT + NL)
+    with open(path, 'w') as f:
+        f.writelines(out)
+    if MARK not in open(path).read():
+        print('ERROR: readback verify failed: ' + path); sys.exit(1)
+    d = os.path.join(os.path.dirname(path), '__pycache__')
+    if os.path.isdir(d):
+        for pyc in glob.glob(os.path.join(d, '*.pyc')):
+            os.remove(pyc)
+    print('PATCHED litellm_call_id metadata: ' + path)
+"`,
           'exec litellm --port 4000 --config /tmp/config.yaml',
         ].join(' && '),
       ],
