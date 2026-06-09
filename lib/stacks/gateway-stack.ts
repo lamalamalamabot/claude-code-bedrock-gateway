@@ -196,6 +196,25 @@ with open('/tmp/config.yaml', 'w') as f:
     yaml.dump(cfg, f)
 "`,
           `python3 -c "
+import importlib, types
+
+def _patch_sign_request():
+    from litellm.llms.bedrock.passthrough.transformation import BedrockPassthroughConfig
+    _orig = BedrockPassthroughConfig.sign_request
+    def _patched(self, headers, litellm_params, request_data, api_base, model=None):
+        call_id = None
+        if isinstance(litellm_params, dict):
+            call_id = litellm_params.get('litellm_call_id')
+        if call_id:
+            headers = headers or {}
+            headers['x-amzn-trace-id'] = 'Root=1-00000000-' + str(call_id).replace('-', '')[:24]
+        return _orig(self, headers, litellm_params, request_data, api_base, model)
+    BedrockPassthroughConfig.sign_request = _patched
+    print('PATCHED: sign_request -> x-amzn-trace-id injection')
+
+_patch_sign_request()
+"`,
+          `python3 -c "
 import subprocess, glob, os, sys
 MARKER = 'invoke_provider = AmazonInvokeConfig.get_bedrock_invoke_provider(model)'
 PROFILE = 'application-inference-profile'
