@@ -65,7 +65,7 @@ export class GatewayStack extends cdk.NestedStack {
     // --- Task Definition ---
     this.taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu: 4096,
-      memoryLimitMiB: 8192,
+      memoryLimitMiB: 16384,
     });
 
     // Task Role: Bedrock, CloudWatch

@@ -70,7 +70,7 @@ export class DatabaseStack extends cdk.NestedStack {
         version: rds.AuroraPostgresEngineVersion.VER_15_15,
       }),
       serverlessV2MinCapacity: 2,
-      serverlessV2MaxCapacity: 16,
+      serverlessV2MaxCapacity: 32,
       writer: rds.ClusterInstance.serverlessV2('Writer', {
         publiclyAccessible: false,
       }),
