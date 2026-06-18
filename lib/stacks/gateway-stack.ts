@@ -65,7 +65,7 @@ export class GatewayStack extends cdk.NestedStack {
     // --- Task Definition ---
     this.taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu: 4096,
-      memoryLimitMiB: 16384,
+      memoryLimitMiB: 30720,
     });
 
     // Task Role: Bedrock, CloudWatch
@@ -323,7 +323,7 @@ for path in paths:
       serviceName: `${PROJECT_NAME}-litellm`,
       cluster,
       taskDefinition: this.taskDefinition,
-      desiredCount: 3,
+      desiredCount: 5,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [props.ecsSg],
       circuitBreaker: { enable: true, rollback: true },
@@ -331,10 +331,13 @@ for path in paths:
     });
 
     const scaling = this.ecsService.autoScaleTaskCount({
-      minCapacity: 3,
+      minCapacity: 5,
       maxCapacity: 20,
     });
     scaling.scaleOnCpuUtilization('CpuScaling', {
+      targetUtilizationPercent: 70,
+    });
+    scaling.scaleOnMemoryUtilization('MemoryScaling', {
       targetUtilizationPercent: 70,
     });
 
