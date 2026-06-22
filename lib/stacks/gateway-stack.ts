@@ -338,7 +338,7 @@ for path in paths:
       targetUtilizationPercent: 70,
     });
     scaling.scaleOnMemoryUtilization('MemoryScaling', {
-      targetUtilizationPercent: 70,
+      targetUtilizationPercent: 50,
     });
 
     // --- ALB ---
@@ -357,6 +357,7 @@ for path in paths:
       port: 4000,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.IP,
+      loadBalancingAlgorithmType: elbv2.TargetGroupLoadBalancingAlgorithmType.LEAST_OUTSTANDING_REQUESTS,
       healthCheck: {
         path: '/health/liveliness',
         interval: cdk.Duration.seconds(30),
