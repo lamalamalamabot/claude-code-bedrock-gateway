@@ -199,17 +199,24 @@ with open('/tmp/config.yaml', 'w') as f:
 import subprocess, glob, os, sys
 NL = chr(10); Q = chr(39)
 TARGET = 'litellm/llms/bedrock/passthrough/transformation.py'
-MARK = '__REQMETA_PATCH__'
+MARK = '__REQMETA_PATCH_V2__'
 P = [
     '',
     '# ' + MARK,
     'import json as _rm_json',
     '_RM_ORIG = BedrockPassthroughConfig.sign_request',
     'def _rm_sign(self, headers, litellm_params, request_data, api_base, model=None):',
-    '    cid = litellm_params.get(' + Q + 'litellm_call_id' + Q + ') if isinstance(litellm_params, dict) else None',
-    '    if cid:',
+    '    lp = litellm_params if isinstance(litellm_params, dict) else {}',
+    '    md = lp.get(' + Q + 'metadata' + Q + ') or {}',
+    '    rm = {}',
+    '    cid = lp.get(' + Q + 'litellm_call_id' + Q + ')',
+    '    if cid: rm[' + Q + 'litellm_call_id' + Q + '] = str(cid)',
+    '    if md.get(' + Q + 'user_api_key_alias' + Q + '): rm[' + Q + 'key_alias' + Q + '] = str(md.get(' + Q + 'user_api_key_alias' + Q + '))',
+    '    if md.get(' + Q + 'user_api_key_user_id' + Q + '): rm[' + Q + 'user_id' + Q + '] = str(md.get(' + Q + 'user_api_key_user_id' + Q + '))',
+    '    if md.get(' + Q + 'user_api_key_team_alias' + Q + '): rm[' + Q + 'team_alias' + Q + '] = str(md.get(' + Q + 'user_api_key_team_alias' + Q + '))',
+    '    if rm:',
     '        headers = dict(headers or {})',
-    '        headers[' + Q + 'X-Amzn-Bedrock-Request-Metadata' + Q + '] = _rm_json.dumps({' + Q + 'litellm_call_id' + Q + ': str(cid)})',
+    '        headers[' + Q + 'X-Amzn-Bedrock-Request-Metadata' + Q + '] = _rm_json.dumps(rm)',
     '    return _RM_ORIG(self, headers, litellm_params, request_data, api_base, model)',
     'BedrockPassthroughConfig.sign_request = _rm_sign',
 ]
