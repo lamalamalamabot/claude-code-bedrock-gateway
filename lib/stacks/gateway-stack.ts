@@ -120,7 +120,7 @@ export class GatewayStack extends cdk.NestedStack {
       },
       environment: {
         DB_NAME: 'litellm',
-        STORE_PROMPTS_IN_SPEND_LOGS: 'True',
+        STORE_PROMPTS_IN_SPEND_LOGS: 'False',
         INFERENCE_PROFILE_ARN_OPUS_4_8: props.inferenceProfileArns.opus48,
         INFERENCE_PROFILE_ARN_OPUS_4_7: props.inferenceProfileArns.opus47,
         INFERENCE_PROFILE_ARN_OPUS_4_6: props.inferenceProfileArns.opus46,
@@ -183,13 +183,14 @@ cfg = {
         },
     ],
     'general_settings': {
-        'store_prompts_in_spend_logs': True,
+        'store_prompts_in_spend_logs': False,
     },
     'litellm_settings': {
         'drop_params': True,
         'request_timeout': 600,
         'max_internal_user_budget': 100,
         'internal_user_budget_duration': '30d',
+        'redact_messages_in_exceptions': True,
     },
 }
 with open('/tmp/config.yaml', 'w') as f:
