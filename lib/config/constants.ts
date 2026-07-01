@@ -4,6 +4,7 @@ export const MODELS = {
   OPUS_4_8: 'global.anthropic.claude-opus-4-8',
   OPUS_4_7: 'global.anthropic.claude-opus-4-7',
   OPUS_4_6: 'global.anthropic.claude-opus-4-6-v1',
+  SONNET_5: 'global.anthropic.claude-sonnet-5',
   SONNET_4_6: 'global.anthropic.claude-sonnet-4-6',
   HAIKU_4_5: 'global.anthropic.claude-haiku-4-5-20251001-v1:0',
 } as const;

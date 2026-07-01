@@ -47,6 +47,7 @@ export class RootStack extends cdk.Stack {
         opus48: inferenceProfile.opus48Arn,
         opus47: inferenceProfile.opus47Arn,
         opus46: inferenceProfile.opus46Arn,
+        sonnet5: inferenceProfile.sonnet5Arn,
         sonnet46: inferenceProfile.sonnet46Arn,
         haiku45: inferenceProfile.haiku45Arn,
       },

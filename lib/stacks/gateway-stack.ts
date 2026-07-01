@@ -23,6 +23,7 @@ export interface GatewayStackProps {
     opus48: string;
     opus47: string;
     opus46: string;
+    sonnet5: string;
     sonnet46: string;
     haiku45: string;
   };
@@ -79,6 +80,7 @@ export class GatewayStack extends cdk.NestedStack {
         props.inferenceProfileArns.opus48,
         props.inferenceProfileArns.opus47,
         props.inferenceProfileArns.opus46,
+        props.inferenceProfileArns.sonnet5,
         props.inferenceProfileArns.sonnet46,
         props.inferenceProfileArns.haiku45,
         'arn:aws:bedrock:*::foundation-model/anthropic.claude-*',
@@ -120,10 +122,11 @@ export class GatewayStack extends cdk.NestedStack {
       },
       environment: {
         DB_NAME: 'litellm',
-        STORE_PROMPTS_IN_SPEND_LOGS: 'False',
+        STORE_PROMPTS_IN_SPEND_LOGS: 'True',
         INFERENCE_PROFILE_ARN_OPUS_4_8: props.inferenceProfileArns.opus48,
         INFERENCE_PROFILE_ARN_OPUS_4_7: props.inferenceProfileArns.opus47,
         INFERENCE_PROFILE_ARN_OPUS_4_6: props.inferenceProfileArns.opus46,
+        INFERENCE_PROFILE_ARN_SONNET_5: props.inferenceProfileArns.sonnet5,
         INFERENCE_PROFILE_ARN_SONNET_4_6: props.inferenceProfileArns.sonnet46,
         INFERENCE_PROFILE_ARN_HAIKU_4_5: props.inferenceProfileArns.haiku45,
       },
@@ -164,6 +167,15 @@ cfg = {
             },
         },
         {
+            'model_name': 'global.anthropic.claude-sonnet-5',
+            'litellm_params': {
+                'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_SONNET_5'],
+            },
+            'model_info': {
+                'base_model': 'bedrock/global.anthropic.claude-sonnet-5',
+            },
+        },
+        {
             'model_name': 'global.anthropic.claude-sonnet-4-6',
             'litellm_params': {
                 'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_SONNET_4_6'],
@@ -183,7 +195,7 @@ cfg = {
         },
     ],
     'general_settings': {
-        'store_prompts_in_spend_logs': False,
+        'store_prompts_in_spend_logs': True,
     },
     'litellm_settings': {
         'drop_params': True,

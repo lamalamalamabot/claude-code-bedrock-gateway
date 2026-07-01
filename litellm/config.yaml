@@ -17,6 +17,12 @@ model_list:
       model: bedrock/arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{OPUS_4_6_PROFILE_ID}
       aws_region_name: ap-northeast-2
 
+  # Claude Sonnet 5
+  - model_name: global.anthropic.claude-sonnet-5
+    litellm_params:
+      model: bedrock/arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{SONNET_5_PROFILE_ID}
+      aws_region_name: ap-northeast-2
+
   # Claude Sonnet 4.6
   - model_name: global.anthropic.claude-sonnet-4-6
     litellm_params:
