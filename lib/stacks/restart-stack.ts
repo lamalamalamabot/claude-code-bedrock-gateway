@@ -125,14 +125,21 @@ export class RestartStack extends cdk.NestedStack {
       resources: [props.dbSecretArn],
     }));
 
-    // Runs 5 min after the restart so DB work never contends with the service
-    // replacement. Same timezone-aware scheduler as the restart (Asia/Seoul).
+    // Runs every 20 min across the low-traffic window (03:00–05:40 KST, 9 runs).
+    // One Lambda run clears ~4h of backlog in its 15-min cap, so 9 runs delete
+    // ~36h/night — more than the 24h/day inflow, so the table converges to the
+    // 2-day window and steady-state runs finish in seconds. The 15-min hard cap
+    // is < the 20-min interval, so runs can never overlap (no concurrent
+    // deleters → no deadlock). Concentrating in the quiet window avoids DELETE
+    // contention with live INSERTs during the day. Same Asia/Seoul scheduler as
+    // the restart; the 04:00 run coincides with the restart but they touch
+    // different resources (DB rows vs. ECS tasks), so they don't contend.
     new scheduler.Schedule(this, 'DailyCleanupSchedule', {
       scheduleName: `${PROJECT_NAME}-spend-log-cleanup`,
-      description: 'Daily retention cleanup of LiteLLM_SpendLogs at 04:05 KST (keep last 2 days)',
+      description: 'Retention cleanup of LiteLLM_SpendLogs every 20 min, 03:00–05:40 KST (keep last 2 days)',
       schedule: scheduler.ScheduleExpression.cron({
-        minute: '5',
-        hour: '4',
+        minute: '0,20,40',
+        hour: '3-5',
         day: '*',
         month: '*',
         year: '*',
