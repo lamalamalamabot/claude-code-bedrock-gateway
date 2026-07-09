@@ -8,6 +8,7 @@ import { GatewayStack } from './gateway-stack';
 import { InferenceProfileStack } from './inference-profile-stack';
 import { MonitoringStack } from './monitoring-stack';
 import { ExportStack } from './export-stack';
+import { RestartStack } from './restart-stack';
 
 // Hardcoded table name to break circular dependency between Gateway and Monitoring NestedStacks.
 // MonitoringStack creates the table with this exact name.
@@ -140,6 +141,11 @@ export class RootStack extends cdk.Stack {
       dbSecretArn: database.cluster.secret!.secretArn,
       s3ExportKeyArn: database.s3ExportKey?.keyArn,
       spendLogExportBucket,
+    });
+
+    // Daily rolling restart of the LiteLLM Fargate service (04:00 KST)
+    new RestartStack(this, 'Restart', {
+      ecsService: gateway.ecsService,
     });
 
   }
