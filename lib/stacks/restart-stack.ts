@@ -116,7 +116,7 @@ export class RestartStack extends cdk.NestedStack {
         DB_SECRET_ARN: props.dbSecretArn,
         DB_NAME: 'litellm',
         RETENTION_DAYS: '2',
-        BATCH_SIZE: '5000',
+        BATCH_SIZE: '50000',
       },
     });
 
