@@ -43,19 +43,33 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "2"))
-BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "50000"))
-# Runaway-loop backstop. At BATCH_SIZE=50000 this is 50M rows/run.
-MAX_BATCHES = int(os.environ.get("MAX_BATCHES", "1000"))
-# Per-statement timeout (ms). A batch exceeding this rolls back (that batch
-# only) and is retried; progress from committed batches is kept.
-STATEMENT_TIMEOUT_MS = int(os.environ.get("STATEMENT_TIMEOUT_MS", "120000"))
+# Starting batch size. On a clean table 50k deletes in <1s, but a bloated
+# live table (dead-tuple buildup, lock contention with in-flight INSERTs, slow
+# Aurora I/O) can push a big batch past the statement timeout. So this is only
+# the *starting* size — a batch that times out is retried at half the size
+# (see _run_batch), down to MIN_BATCH_SIZE. Steady-state daily runs stay large;
+# a slow backlog run self-throttles instead of crashing.
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "10000"))
+MIN_BATCH_SIZE = int(os.environ.get("MIN_BATCH_SIZE", "500"))
+# Runaway-loop backstop. At BATCH_SIZE=10000 this is 10M rows/run.
+MAX_BATCHES = int(os.environ.get("MAX_BATCHES", "5000"))
+# Per-statement timeout (ms). A batch exceeding this is cancelled by Postgres
+# (SQLSTATE 57014); the connection stays usable (autocommit, no aborted tx), so
+# we shrink the batch and retry. Progress from committed batches is kept.
+STATEMENT_TIMEOUT_MS = int(os.environ.get("STATEMENT_TIMEOUT_MS", "60000"))
 # Transient errors are retried per batch with linear backoff.
-MAX_RETRY = int(os.environ.get("MAX_RETRY", "5"))
+MAX_RETRY = int(os.environ.get("MAX_RETRY", "6"))
 RETRY_BACKOFF_SECONDS = float(os.environ.get("RETRY_BACKOFF_SECONDS", "2"))
+# A backlog run can be hundreds of batches; only log every Nth to keep
+# CloudWatch volume down (retries/shrinks and the final summary always log).
+PROGRESS_LOG_EVERY = int(os.environ.get("PROGRESS_LOG_EVERY", "20"))
 
-# SQLSTATEs safe to retry: the batch rolled back cleanly so a retry can't
-# double-delete. 40P01 = deadlock_detected, 40001 = serialization_failure.
-RETRYABLE_SQLSTATES = {"40P01", "40001"}
+# SQLSTATEs safe to retry: the batch rolled back cleanly (nothing committed) so
+# a retry can't double-delete. 40P01 = deadlock_detected, 40001 =
+# serialization_failure (both wait then retry same size); 57014 =
+# statement_timeout (retry at a smaller size — the batch was too big/slow).
+RETRYABLE_SQLSTATES = {"40P01", "40001", "57014"}
+STATEMENT_TIMEOUT_SQLSTATE = "57014"
 
 # Keyset-paginated batch delete. `doomed` is MATERIALIZED so it's evaluated
 # exactly once: the same fixed set feeds both the DELETE and the next-cursor
@@ -109,11 +123,13 @@ def get_db_connection():
     )
 
 
-def _run_batch(conn, cutoff_str, cur_ts, cur_id):
-    """Run one keyset batch with retry on transient errors.
+def _run_batch(conn, cutoff_str, cur_ts, cur_id, batch_size):
+    """Run one keyset batch, retrying transient errors and shrinking on timeout.
 
-    Returns (found, deleted, max_ts, max_id) where max_ts/max_id are the last
-    keyset of the batch (None when nothing was found).
+    Returns (found, deleted, max_ts, max_id, batch_size) — the trailing value is
+    the (possibly reduced) batch size that succeeded, so the caller can keep
+    using the smaller size for subsequent batches instead of timing out again.
+    max_ts/max_id are the last keyset of the batch (None when nothing found).
     """
     for attempt in range(1, MAX_RETRY + 1):
         try:
@@ -122,21 +138,32 @@ def _run_batch(conn, cutoff_str, cur_ts, cur_id):
                 cutoff=cutoff_str,
                 cur_ts=cur_ts,
                 cur_id=cur_id,
-                batch=BATCH_SIZE,
+                batch=batch_size,
             )
             r = rows[0]  # single row: [found, deleted, max_ts, max_id]
-            return int(r[0] or 0), int(r[1] or 0), r[2], r[3]
+            return int(r[0] or 0), int(r[1] or 0), r[2], r[3], batch_size
         except pg8000.native.DatabaseError as exc:
             state = _sqlstate(exc)
-            if state in RETRYABLE_SQLSTATES and attempt < MAX_RETRY:
-                wait = RETRY_BACKOFF_SECONDS * attempt
+            if state not in RETRYABLE_SQLSTATES or attempt >= MAX_RETRY:
+                raise
+            if state == STATEMENT_TIMEOUT_SQLSTATE and batch_size > MIN_BATCH_SIZE:
+                # Batch too big/slow for the statement timeout — halve and retry
+                # immediately (no backoff; the work just needs to be smaller).
+                batch_size = max(MIN_BATCH_SIZE, batch_size // 2)
                 logger.warning(
-                    f"Transient DB error {state} on batch (attempt {attempt}/"
-                    f"{MAX_RETRY}); retrying in {wait}s"
+                    f"Batch timed out (57014, attempt {attempt}/{MAX_RETRY}); "
+                    f"shrinking batch to {batch_size} and retrying"
                 )
-                time.sleep(wait)
                 continue
-            raise
+            wait = RETRY_BACKOFF_SECONDS * attempt
+            logger.warning(
+                f"Transient DB error {state} on batch (attempt {attempt}/"
+                f"{MAX_RETRY}); retrying in {wait}s"
+            )
+            time.sleep(wait)
+    # Loop exhausted without returning or raising (shouldn't happen: the last
+    # attempt either returns or re-raises). Defensive guard.
+    raise RuntimeError("batch retries exhausted without result")
 
 
 def handler(event, context):
@@ -158,18 +185,29 @@ def handler(event, context):
     total_deleted = 0
     batches = 0
     cur_ts, cur_id = EPOCH_CURSOR_TS, EPOCH_CURSOR_ID
+    batch_size = BATCH_SIZE  # may shrink if batches time out; stays shrunk
     try:
         conn.run(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}")
 
         while batches < MAX_BATCHES:
-            found, deleted, max_ts, max_id = _run_batch(conn, cutoff_str, cur_ts, cur_id)
+            found, deleted, max_ts, max_id, batch_size = _run_batch(
+                conn, cutoff_str, cur_ts, cur_id, batch_size
+            )
             total_deleted += deleted
             batches += 1
-            logger.info(f"found={found} deleted={deleted} total={total_deleted}")
 
             # Nothing older than cutoff remains (past the cursor) -> done.
             if found == 0:
                 break
+
+            # A backlog run can be hundreds of batches; log a progress line only
+            # periodically (and on the final batch below) to keep CloudWatch
+            # volume sane. _run_batch already logs every shrink/retry.
+            if batches % PROGRESS_LOG_EVERY == 0:
+                logger.info(
+                    f"progress: {total_deleted} deleted in {batches} batches "
+                    f"(batch_size={batch_size})"
+                )
 
             # Advance the keyset cursor to the last row of this batch. request_id
             # is unique, so (max_ts, max_id) is strictly greater than the current
