@@ -212,6 +212,7 @@ cfg = {
             'type': 'redis',
             'host': os.environ.get('REDIS_HOST'),
             'port': os.environ.get('REDIS_PORT'),
+            'ssl': True,
             'supported_call_types': [],
         },
         'enable_redis_auth_cache': True,
