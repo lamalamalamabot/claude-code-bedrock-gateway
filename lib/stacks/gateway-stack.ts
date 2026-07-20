@@ -200,6 +200,7 @@ cfg = {
     ],
     'general_settings': {
         'store_prompts_in_spend_logs': False,
+        'disable_spend_logs': True,
     },
     'litellm_settings': {
         'drop_params': True,
