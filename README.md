@@ -14,8 +14,8 @@ LLM Gateway는 [Claude Code 공식 문서](https://code.claude.com/docs/en/llm-g
 - **팀/사용자별 예산 관리**: LiteLLM의 팀/사용자별 예산 설정 및 초과 차단 (신규 사용자 기본 $10,000/30일)
 - **Bedrock Application Inference Profile**: CDK로 자동 생성되는 모델별 Application Inference Profile을 통한 추론 (태깅 기반 비용 추적, CloudWatch 메트릭 분리)
 - **Bedrock pass-through**: Claude Code의 Anthropic 네이티브 요청 형식을 그대로 Bedrock InvokeModel로 전달 (LiteLLM은 인증/예산/스펜드 추적만 수행)
-- **감사 로그**: DynamoDB에 요청 메타데이터(프롬프트/응답 본문 제외) 기록, Aurora spend log를 매시간 S3로 자동 export
-- **일일 유지보수**: 매일 04:00 KST에 ECS 롤링 재시작 + spend log 보존기간(2일) 정리
+- **감사 로그**: DynamoDB에 요청 메타데이터(프롬프트/응답 본문 제외) 기록. `LiteLLM_SpendLogs` 행 자체는 `disable_spend_logs`로 비활성화(예산/사용량 집계는 별도 카운터로 동작하므로 영향 없음)
+- **일일 유지보수**: 매일 04:00 KST에 ECS 롤링 재시작
 - **모니터링**: CloudWatch Dashboard, CPU/5xx 알람, SNS 알림
 - **선택적 멀티 계정 구성**: Identity Store 조회(`identityStoreRoleArn`)와 spend log export 대상 버킷(`spendLogExportBucket`/`spendLogExportAccountId`)을 다른 AWS 계정으로 지정 가능
 
@@ -125,7 +125,7 @@ IAM Identity Center                    LiteLLM
 | Token Service | Lambda (Python 3.12) | Virtual Key 자동 생성, 팀 매핑, DynamoDB 캐싱 |
 | DB (LiteLLM) | Aurora Serverless v2 (PostgreSQL 15.15) | 2~64 ACU, Isolated Subnet |
 | DB (감사/설정) | DynamoDB (PAY_PER_REQUEST) | Audit 테이블(요청 메타데이터), Config 테이블(Virtual Key 캐시) |
-| 로그 export | Lambda + EventBridge Scheduler | Aurora spend_logs → S3 매시간 export(`aws_s3` extension), 2일 보존 정리(매일 03:00~05:40 KST) |
+| 로그 export | Lambda + EventBridge Scheduler | Aurora spend_logs → S3 매시간 export(`aws_s3` extension) |
 | 모니터링 | CloudWatch Dashboard + Alarms | ECS/ALB 메트릭, CPU/5xx 알람, SNS 알림 |
 | 네트워크 | VPC (2 AZ, NAT GW 2개) | Bedrock Runtime VPC Endpoint, S3/DynamoDB Gateway Endpoint |
 | AI 모델 | Amazon Bedrock (Application Inference Profile) | Claude Opus 4.8/4.7/4.6, Sonnet 5/4.6, Haiku 4.5 |
@@ -149,15 +149,13 @@ claude-code-bedrock-gateway/
 │       ├── gateway-stack.ts             # ALB + ECS Fargate + LiteLLM (config.yaml 동적 생성 + 런타임 패치)
 │       ├── monitoring-stack.ts          # DynamoDB (Audit/Config), CloudWatch
 │       ├── export-stack.ts              # Aurora spend_logs → S3 매시간 export Lambda
-│       └── restart-stack.ts             # 일일 ECS 롤링 재시작 + spend log 정리 Lambda
+│       └── restart-stack.ts             # 일일 04:00 KST ECS 롤링 재시작
 ├── lambda/
 │   ├── token-service/
 │   │   ├── handler.py                   # SSO ARN 파싱 → 팀 자동 매핑 → Virtual Key 생성/캐시
 │   │   └── tests/
-│   ├── spend-log-exporter/
-│   │   └── handler.py                   # Aurora aws_s3.query_export_to_s3() 실행
-│   └── spend-log-cleaner/
-│       └── handler.py                   # LiteLLM_SpendLogs 보존기간 정리 (배치 DELETE)
+│   └── spend-log-exporter/
+│       └── handler.py                   # Aurora aws_s3.query_export_to_s3() 실행
 ├── litellm/                              # 참고용 예시 파일 (실제 배포에는 미사용 - config.yaml은 ECS 컨테이너
 │   │                                       시작 시 gateway-stack.ts 내 Python 스크립트로 동적 생성됨)
 │   ├── config.yaml
@@ -201,8 +199,8 @@ LlmGatewayStack (Root)
 │     └── depends on: Gateway
 ├── Export             — Aurora spend_logs → S3 매시간 export Lambda
 │     └── depends on: Network, Database
-└── Restart            — 일일 04:00 KST ECS 롤링 재시작 + spend log 정리 Lambda
-      └── depends on: Gateway, Network
+└── Restart            — 일일 04:00 KST ECS 롤링 재시작
+      └── depends on: Gateway
 ```
 
 ## 사전 요구사항

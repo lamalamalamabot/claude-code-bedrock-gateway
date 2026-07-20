@@ -151,13 +151,9 @@ export class RootStack extends cdk.Stack {
       spendLogExportBucket,
     });
 
-    // Daily 04:00 KST maintenance: rolling restart of the Fargate service +
-    // retention cleanup of old spend logs (keep last 2 days).
+    // Daily 04:00 KST rolling restart of the Fargate service.
     new RestartStack(this, 'Restart', {
       ecsService: gateway.ecsService,
-      vpc: network.vpc,
-      lambdaSg: network.lambdaSg,
-      dbSecretArn: database.cluster.secret!.secretArn,
     });
 
   }
