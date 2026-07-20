@@ -8,6 +8,7 @@ export class NetworkStack extends cdk.NestedStack {
   public readonly albSg: ec2.SecurityGroup;
   public readonly ecsSg: ec2.SecurityGroup;
   public readonly rdsSg: ec2.SecurityGroup;
+  public readonly cacheSg: ec2.SecurityGroup;
   public readonly lambdaSg: ec2.SecurityGroup;
   public readonly vpcEndpointSg: ec2.SecurityGroup;
 
@@ -95,6 +96,19 @@ export class NetworkStack extends cdk.NestedStack {
       this.lambdaSg,
       ec2.Port.tcp(5432),
       'Allow PostgreSQL from Lambda',
+    );
+
+    // ElastiCache: inbound 6379 from ECS only
+    this.cacheSg = new ec2.SecurityGroup(this, 'CacheSg', {
+      vpc: this.vpc,
+      securityGroupName: `${PROJECT_NAME}-cache-sg`,
+      description: 'ElastiCache security group - Redis port',
+      allowAllOutbound: false,
+    });
+    this.cacheSg.addIngressRule(
+      this.ecsSg,
+      ec2.Port.tcp(6379),
+      'Allow Redis from ECS',
     );
 
     // VPC Endpoint SG: inbound 443 from ECS

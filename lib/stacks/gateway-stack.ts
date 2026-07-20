@@ -18,6 +18,8 @@ export interface GatewayStackProps {
   albSg: ec2.ISecurityGroup;
   ecsSg: ec2.ISecurityGroup;
   dbCluster: rds.DatabaseCluster;
+  redisEndpoint: string;
+  redisPort: string;
   certificateArn: string;
   inferenceProfileArns: {
     opus48: string;
@@ -122,6 +124,8 @@ export class GatewayStack extends cdk.NestedStack {
       },
       environment: {
         DB_NAME: 'litellm',
+        REDIS_HOST: props.redisEndpoint,
+        REDIS_PORT: props.redisPort,
         STORE_PROMPTS_IN_SPEND_LOGS: 'False',
         INFERENCE_PROFILE_ARN_OPUS_4_8: props.inferenceProfileArns.opus48,
         INFERENCE_PROFILE_ARN_OPUS_4_7: props.inferenceProfileArns.opus47,
@@ -203,6 +207,14 @@ cfg = {
         'max_internal_user_budget': 100,
         'internal_user_budget_duration': '30d',
         'redact_messages_in_exceptions': True,
+        'cache': True,
+        'cache_params': {
+            'type': 'redis',
+            'host': os.environ.get('REDIS_HOST'),
+            'port': os.environ.get('REDIS_PORT'),
+            'supported_call_types': [],
+        },
+        'enable_redis_auth_cache': True,
     },
 }
 with open('/tmp/config.yaml', 'w') as f:

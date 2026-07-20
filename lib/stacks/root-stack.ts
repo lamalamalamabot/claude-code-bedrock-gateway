@@ -3,6 +3,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import { NetworkStack } from './network-stack';
 import { DatabaseStack } from './database-stack';
+import { CacheStack } from './cache-stack';
 import { AuthStack } from './auth-stack';
 import { GatewayStack } from './gateway-stack';
 import { InferenceProfileStack } from './inference-profile-stack';
@@ -31,6 +32,11 @@ export class RootStack extends cdk.Stack {
       spendLogExportAccountId,
     });
 
+    const cache = new CacheStack(this, 'Cache', {
+      vpc: network.vpc,
+      cacheSg: network.cacheSg,
+    });
+
     const inferenceProfile = new InferenceProfileStack(this, 'InferenceProfile');
 
     const auth = new AuthStack(this, 'Auth', {
@@ -43,6 +49,8 @@ export class RootStack extends cdk.Stack {
       albSg: network.albSg,
       ecsSg: network.ecsSg,
       dbCluster: database.cluster,
+      redisEndpoint: cache.cache.attrEndpointAddress,
+      redisPort: cache.cache.attrEndpointPort,
       certificateArn: this.node.tryGetContext('certificateArn') || process.env.CERTIFICATE_ARN || '',
       inferenceProfileArns: {
         opus48: inferenceProfile.opus48Arn,
