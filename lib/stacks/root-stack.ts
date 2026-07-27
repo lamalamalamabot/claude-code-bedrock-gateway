@@ -53,6 +53,7 @@ export class RootStack extends cdk.Stack {
       redisPort: cache.cache.attrEndpointPort,
       certificateArn: this.node.tryGetContext('certificateArn') || process.env.CERTIFICATE_ARN || '',
       inferenceProfileArns: {
+        opus5: inferenceProfile.opus5Arn,
         opus48: inferenceProfile.opus48Arn,
         opus47: inferenceProfile.opus47Arn,
         opus46: inferenceProfile.opus46Arn,
@@ -110,7 +111,7 @@ export class RootStack extends cdk.Stack {
 
     // Output Application Inference Profile ARNs for developer settings.json
     new cdk.CfnOutput(this, 'InferenceProfileArnOpus', {
-      value: inferenceProfile.opus46Arn,
+      value: inferenceProfile.opus5Arn,
       description: 'Application Inference Profile ARN for Claude Opus (LiteLLM routes global.* to this ARN)',
     });
     new cdk.CfnOutput(this, 'InferenceProfileArnSonnet', {

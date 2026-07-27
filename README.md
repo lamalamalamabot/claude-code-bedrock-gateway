@@ -128,7 +128,7 @@ IAM Identity Center                    LiteLLM
 | 로그 export | Lambda + EventBridge Scheduler | Aurora spend_logs → S3 매시간 export(`aws_s3` extension) |
 | 모니터링 | CloudWatch Dashboard + Alarms | ECS/ALB 메트릭, CPU/5xx 알람, SNS 알림 |
 | 네트워크 | VPC (2 AZ, NAT GW 2개) | Bedrock Runtime VPC Endpoint, S3/DynamoDB Gateway Endpoint |
-| AI 모델 | Amazon Bedrock (Application Inference Profile) | Claude Opus 4.8/4.7/4.6, Sonnet 5/4.6, Haiku 4.5 |
+| AI 모델 | Amazon Bedrock (Application Inference Profile) | Claude Opus 5/4.8/4.7/4.6, Sonnet 5/4.6, Haiku 4.5 |
 
 ## 디렉토리 구조
 
@@ -307,9 +307,9 @@ NestedStack 구조이므로 루트 스택 하나만 배포하면 모든 하위 �
        "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
        "NODE_EXTRA_CA_CERTS": "/path/to/server.crt",
 
-       "ANTHROPIC_DEFAULT_OPUS_MODEL": "global.anthropic.claude-opus-4-8[1m]",
-       "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "Opus 4.8 (1M)",
-       "ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION": "Opus 4.8 · 1M context, most capable",
+       "ANTHROPIC_DEFAULT_OPUS_MODEL": "global.anthropic.claude-opus-5",
+       "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "Opus 5",
+       "ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION": "Opus 5 · 1M context, most capable",
        "ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES": "effort,xhigh_effort,max_effort,thinking,adaptive_thinking,interleaved_thinking",
 
        "ANTHROPIC_DEFAULT_SONNET_MODEL": "global.anthropic.claude-sonnet-4-6[1m]",
@@ -321,16 +321,18 @@ NestedStack 구조이므로 루트 스택 하나만 배포하면 모든 하위 �
        "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": "Haiku 4.5",
        "ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION": "Haiku 4.5 · Fastest for quick answers",
 
-       "ANTHROPIC_CUSTOM_MODEL_OPTION": "global.anthropic.claude-opus-4-7[1m]",
-       "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME": "Opus 4.7 (1M)",
-       "ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION": "Opus 4.7 · 1M context"
+       "ANTHROPIC_CUSTOM_MODEL_OPTION": "global.anthropic.claude-opus-4-8[1m]",
+       "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME": "Opus 4.8 (1M)",
+       "ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION": "Opus 4.8 · 1M context"
      },
      "apiKeyHelper": "/path/to/get-gateway-token.sh",
-     "model": "global.anthropic.claude-opus-4-8[1m]"
+     "model": "global.anthropic.claude-opus-5"
    }
    ```
 
-   > `/model` 피커에는 위 4개 모델이 표시됩니다. Sonnet 5, Opus 4.6은 피커에 없지만 `/model global.anthropic.claude-sonnet-5` / `/model global.anthropic.claude-opus-4-6-v1`으로 직접 지정할 수 있습니다.
+   > Opus 5는 1M 컨텍스트가 기본값이자 최대값이므로 `[1m]` suffix가 필요하지 않습니다.
+   >
+   > `/model` 피커에는 위 4개 모델이 표시됩니다. Sonnet 5, Opus 4.7, Opus 4.6은 피커에 없지만 `/model global.anthropic.claude-sonnet-5` / `/model global.anthropic.claude-opus-4-7` / `/model global.anthropic.claude-opus-4-6-v1`으로 직접 지정할 수 있습니다.
 
 4. **Claude Code 실행**
    ```bash
@@ -347,10 +349,10 @@ NestedStack 구조이므로 루트 스택 하나만 배포하면 모든 하위 �
 | `ANTHROPIC_BEDROCK_BASE_URL` | `https://{ALB_DNS}/bedrock` | Gateway Bedrock pass-through URL |
 | `CLAUDE_CODE_SKIP_BEDROCK_AUTH` | `1` | SigV4 인증 생략 (Gateway가 처리) |
 | `AWS_REGION` | `ap-northeast-2` | AWS 리전 |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `global.anthropic.claude-opus-4-8[1m]` | Opus 4.8 1M context (`[1m]` suffix로 1M 활성화) |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `global.anthropic.claude-opus-5` | Opus 5 (1M context가 기본값이라 `[1m]` suffix 불필요) |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | `global.anthropic.claude-sonnet-4-6[1m]` | Sonnet 4.6 1M context (`[1m]` suffix로 1M 활성화) |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | Haiku 4.5 (LiteLLM이 Application Inference Profile로 라우팅) |
-| `ANTHROPIC_CUSTOM_MODEL_OPTION` | `global.anthropic.claude-opus-4-7[1m]` | Opus 4.7 1M context (피커에 추가 모델로 표시) |
+| `ANTHROPIC_CUSTOM_MODEL_OPTION` | `global.anthropic.claude-opus-4-8[1m]` | Opus 4.8 1M context (피커에 추가 모델로 표시) |
 | `*_NAME` / `*_DESCRIPTION` | 각 모델별 | `/model` 피커에 friendly name 표시 |
 | `NODE_EXTRA_CA_CERTS` | `/path/to/server.crt` | 자체서명 인증서 경로 |
 

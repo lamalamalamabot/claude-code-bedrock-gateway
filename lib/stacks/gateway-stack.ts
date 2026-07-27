@@ -22,6 +22,7 @@ export interface GatewayStackProps {
   redisPort: string;
   certificateArn: string;
   inferenceProfileArns: {
+    opus5: string;
     opus48: string;
     opus47: string;
     opus46: string;
@@ -79,6 +80,7 @@ export class GatewayStack extends cdk.NestedStack {
         'bedrock:InvokeModelWithResponseStream',
       ],
       resources: [
+        props.inferenceProfileArns.opus5,
         props.inferenceProfileArns.opus48,
         props.inferenceProfileArns.opus47,
         props.inferenceProfileArns.opus46,
@@ -127,6 +129,7 @@ export class GatewayStack extends cdk.NestedStack {
         REDIS_HOST: props.redisEndpoint,
         REDIS_PORT: props.redisPort,
         STORE_PROMPTS_IN_SPEND_LOGS: 'False',
+        INFERENCE_PROFILE_ARN_OPUS_5: props.inferenceProfileArns.opus5,
         INFERENCE_PROFILE_ARN_OPUS_4_8: props.inferenceProfileArns.opus48,
         INFERENCE_PROFILE_ARN_OPUS_4_7: props.inferenceProfileArns.opus47,
         INFERENCE_PROFILE_ARN_OPUS_4_6: props.inferenceProfileArns.opus46,
@@ -143,6 +146,15 @@ export class GatewayStack extends cdk.NestedStack {
 import yaml, os
 cfg = {
     'model_list': [
+        {
+            'model_name': 'global.anthropic.claude-opus-5',
+            'litellm_params': {
+                'model': 'bedrock/' + os.environ['INFERENCE_PROFILE_ARN_OPUS_5'],
+            },
+            'model_info': {
+                'base_model': 'bedrock/global.anthropic.claude-opus-5',
+            },
+        },
         {
             'model_name': 'global.anthropic.claude-opus-4-8',
             'litellm_params': {

@@ -1,6 +1,7 @@
 export const PROJECT_NAME = 'claude-code-enterprise';
 
 export const MODELS = {
+  OPUS_5: 'global.anthropic.claude-opus-5',
   OPUS_4_8: 'global.anthropic.claude-opus-4-8',
   OPUS_4_7: 'global.anthropic.claude-opus-4-7',
   OPUS_4_6: 'global.anthropic.claude-opus-4-6-v1',

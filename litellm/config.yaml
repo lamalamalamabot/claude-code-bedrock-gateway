@@ -5,6 +5,18 @@
 # 실제 ARN은 CDK 배포 시 컨테이너 환경변수로 주입됨 (아래는 참고용 예시)
 
 model_list:
+  # Claude Opus 5
+  - model_name: global.anthropic.claude-opus-5
+    litellm_params:
+      model: bedrock/arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{OPUS_5_PROFILE_ID}
+      aws_region_name: ap-northeast-2
+
+  # Claude Opus 4.8
+  - model_name: global.anthropic.claude-opus-4-8
+    litellm_params:
+      model: bedrock/arn:aws:bedrock:{REGION}:{ACCOUNT_ID}:application-inference-profile/{OPUS_4_8_PROFILE_ID}
+      aws_region_name: ap-northeast-2
+
   # Claude Opus 4.7
   - model_name: global.anthropic.claude-opus-4-7
     litellm_params:

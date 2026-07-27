@@ -134,9 +134,9 @@ bash /저장한/경로/get-gateway-token.sh
     "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
     "NODE_EXTRA_CA_CERTS": "/본인경로/server.crt",
 
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "global.anthropic.claude-opus-4-7[1m]",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "Opus 4.7 (1M)",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION": "Opus 4.7 · 1M context, most capable",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "global.anthropic.claude-opus-5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "Opus 5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION": "Opus 5 · 1M context, most capable",
     "ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES": "effort,xhigh_effort,max_effort,thinking,adaptive_thinking,interleaved_thinking",
 
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "global.anthropic.claude-sonnet-4-6[1m]",
@@ -148,12 +148,12 @@ bash /저장한/경로/get-gateway-token.sh
     "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": "Haiku 4.5",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION": "Haiku 4.5 · Fastest for quick answers",
 
-    "ANTHROPIC_CUSTOM_MODEL_OPTION": "global.anthropic.claude-opus-4-6-v1[1m]",
-    "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME": "Opus 4.6 (1M)",
-    "ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION": "Opus 4.6 · 1M context"
+    "ANTHROPIC_CUSTOM_MODEL_OPTION": "global.anthropic.claude-opus-4-8[1m]",
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME": "Opus 4.8 (1M)",
+    "ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION": "Opus 4.8 · 1M context"
   },
   "apiKeyHelper": "/본인경로/get-gateway-token.sh",
-  "model": "global.anthropic.claude-opus-4-7[1m]"
+  "model": "global.anthropic.claude-opus-5"
 }
 ```
 
@@ -170,12 +170,14 @@ bash /저장한/경로/get-gateway-token.sh
 >
 > | # | 모델명 | 컨텍스트 | 용도 |
 > |---|--------|----------|------|
-> | 1 | Opus 4.7 (1M) | 1M | 기본 모델 (가장 뛰어난 성능) |
+> | 1 | Opus 5 | 1M | 기본 모델 (가장 뛰어난 성능) |
 > | 2 | Sonnet 4.6 (1M) | 1M | 대규모 코드베이스 작업 |
 > | 3 | Haiku 4.5 | 200K | 빠른 응답 |
-> | 4 | Opus 4.6 (1M) | 1M | 복잡한 작업 대안 |
+> | 4 | Opus 4.8 (1M) | 1M | 복잡한 작업 대안 |
 >
-> Sonnet 4.6 200K는 피커에 표시되지 않지만, `/model global.anthropic.claude-sonnet-4-6`으로 직접 지정 가능합니다.
+> Opus 5는 1M 컨텍스트가 기본값이자 최대값이므로 `[1m]` suffix를 붙이지 않습니다.
+>
+> 피커에 표시되지 않는 모델도 ID로 직접 지정 가능합니다: `/model global.anthropic.claude-sonnet-5`, `/model global.anthropic.claude-opus-4-7`, `/model global.anthropic.claude-opus-4-6-v1`
 
 ---
 
